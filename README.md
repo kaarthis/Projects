@@ -3,7 +3,6 @@
 
 - THIS README TEMPLATE LARGELY CONSISTS OF COMMENTED OUT TEXT. THIS UNRENDERED TEXT IS MEANT TO BE LEFT IN AS A GUIDE 
   THROUGHOUT THE REPOSITORY'S LIFE WHILE END USERS ONLY SEE THE RENDERED PAGE CONTENT. 
-- Any italicized text rendered in the initial template is intended to be replaced IMMEDIATELY upon repository creation.
 
 - This template is default but not mandatory. It was designed to compensate for typical gaps in Microsoft READMEs 
   that slow the pace of work. You may delete it if you have a fully populated README to replace it with.
@@ -15,7 +14,7 @@
   "built with", "acknowledgments", "folder structure", etc.
 - You can easily find the places to add content that will be rendered to the end user by searching 
 within the file for "TODO".
-
+- Any italicized text rendered in the initial template is intended to be replaced IMMEDIATELY upon repository creation.
 
 
 - ADDITIONAL EXTERNAL TEMPLATE INSTRUCTIONS:
@@ -27,7 +26,7 @@ within the file for "TODO".
 
 <!---------------------[  Description  ]------------------<recommended> section below------------------>
 
-# aks-handbook
+# aks-docs
 
 <!-- 
 INSTRUCTIONS:
@@ -46,7 +45,39 @@ How to Evaluate & Examples:
   - https://aka.ms/StartRight/README-Template/Instructions#description
 -->
 
-AKS PRDs, Design, and RFD docs
+# Introduction
+
+This repo contains organizational documents for AKS.
+
+<!-- - For sprint planning, submit [objectives and key results (OKR)](okr/README.md). -->
+<!-- - For incidents, complete a [postmortem](./recurring/postmortem/README.md). -->
+- For new features or user requirements, submit a [product requirements document (PRD)](prd/0000-prd-template.md).
+- For designs implementing approved PRDs, submit a [design document](design/0000-design-template.md).
+- For changes introducing API changes, submit an [api change proposal](api/0000-api-template.md).
+- For process changes or general discussions, create a [request for discussion (RFD)](rfd/README.md).
+
+## How to use
+
+Work in AKS often starts life as user requirements defined by PM in product requirements documents (PRDs).
+
+Developers take accepted product requirements and propose solutions in design documents.
+
+Changes to user-facing APIs require explicit documentation, beyond integration with an accepted design document. This may require iterative back and forth review of API changes and design.
+
+Designs should be accompanied by the associated product requirements document (prd) or request for discussion (rfd).
+
+Dev and PM owners ensure features pass a launch review board (LRB) before gratuating from preview to general availability (GA).
+
+```mermaid
+graph LR
+A[PRD] --> B
+B[API Review] -.-> C
+C -.-> B
+C[Design Doc] --> H
+H[Code] --> D
+D[Preview] --> E
+E[LRB] --> F[GA] 
+```
 
 -----------------------------------------------------------------
 <!-----------------------[  License  ]----------------------<optional> section below--------------------->
@@ -268,11 +299,9 @@ How to Evaluate & Examples:
 -->
 
 <!---- [TODO]  CONTENT GOES BELOW ------->
-
-_The creators of this repository **DO NOT EXPECT REUSE**._
-
-If you do use it, please let us know via an email or 
-leave a note in an issue, so we can best understand the value of this repository.
+_This code was not created with a strong expectation that others outside the immediate creators would reuse or 
+contribute to it. If you do reuse it, please let us know via an email to the person noted in the CODEOWNERS file, so 
+we can best understand the value of this repository._ 
 <!------====-- CONTENT GOES ABOVE ------->
 
 
@@ -311,8 +340,7 @@ INSTRUCTIONS:
 
  If you have trouble doing something related to this repository, please keep in mind that the following actions require 
  using [GitHub inside Microsoft (GiM) tooling](https://aka.ms/gim/docs) and not the normal GitHub visible user interface!
-- [Switching between EMU GitHub and normal GitHub without logging out and back in constantly](https://aka.ms/StartRight/README-Template/maintainingMultipleAccount)
-- [Creating a repository](https://aka.ms/StartRight)
+- [Creating a repository](aka.ms/startright)
 - [Changing repository visibility](https://aka.ms/StartRight/README-Template/policies/jit) 
 - [Gaining repository permissions, access, and roles](https://aka.ms/StartRight/README-TEmplates/gim/policies/access)
 - [Enabling easy access to your low sensitivity and widely applicable repository by setting it to Internal Visibility and having any FTE who wants to see it join the 1ES Enterprise Visibility MyAccess Group](https://aka.ms/StartRight/README-Template/gim/innersource-access)
@@ -325,4 +353,4 @@ This README started as a template provided as part of the
 [StartRight](https://aka.ms/gim/docs/startright) tool that is used to create new repositories safely. Feedback on the
 [README template](https://aka.ms/StartRight/README-Template) used in this repository is requested as an issue. 
 
-<!-- version: 2023-04-07 [Do not delete this line, it is used for analytics that drive template improvements] -->
+<!-- version: 2022-10-14-draft [Do not delete this line, it is used for analytics that drive template improvements] -->

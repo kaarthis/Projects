@@ -1,0 +1,186 @@
+﻿Diagnose log at 2025-05-30T22:19:38Z
+
+AppPath: /usr/local/bin/git-credential-manager
+InstallDir: /usr/local/share/gcm-core/
+Version: 2.6.1+786ab03440ddc82e807a97c0e540f5247e44cec6
+
+------------
+Diagnostic: Environment
+Skipped: False
+Success: True
+Exception: None
+Log:
+OSType: macOS
+OSVersion: 15.5.0
+Reading environment variables... OK
+ Variables:
+TERM=tmux-256color
+GIT_EXEC_PATH=/Library/Developer/CommandLineTools/usr/libexec/git-core
+USER=jpang
+XDG_CONFIG_HOME=/Users/jpang/.config
+ZSH=/Users/jpang/.oh-my-zsh
+INFOPATH=/opt/homebrew/share/info:
+HOMEBREW_PREFIX=/opt/homebrew
+COMMAND_MODE=unix2003
+ALACRITTY_WINDOW_ID=5371877584
+LESS=-R
+ALACRITTY_SOCKET=/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/Alacritty-737.sock
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+LC_ALL=en_US.UTF-8
+LaunchInstanceID=BCAEFA5A-4DA0-4271-8B55-C3C6E17CA63D
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+_=/usr/bin/git
+TMPDIR=/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/
+XDG_CACHE_HOME=/Users/jpang/.cache
+OLDPWD=/Users/jpang/Code/github.com/azure-management-and-platforms
+MANPATH=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/share/man:/Library/Developer/CommandLineTools/usr/share/man:/Library/Developer/CommandLineTools/Toolchains/XcodeDefault.xctoolchain/usr/share/man:
+LOGNAME=jpang
+HOME=/Users/jpang
+XDG_CONFIG_DIRS=/etc/xdg
+HOMEBREW_REPOSITORY=/opt/homebrew
+XPC_FLAGS=0x0
+_ZSH_TMUX_FIXED_CONFIG=/Users/jpang/.oh-my-zsh/plugins/tmux/tmux.extra.conf
+TMUX_PANE=%1
+XDG_DATA_HOME=/Users/jpang/.local/share
+FZF_CTRL_T_OPTS=--select-1 --exit-0
+PWD=/Users/jpang/Code/github.com/azure-management-and-platforms/aks-docs
+ZSH_TMUX_CONFIG=/Users/jpang/.tmux.conf
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.V178L4XpRN/Listeners
+CPATH=/usr/local/include
+XDG_DATA_DIRS=/usr/local/share/:/usr/share/
+SHLVL=2
+ZSH_TMUX_AUTOSTARTED=true
+GIT_TRACE2_PARENT_SID=1407a252-8f8c-4803-a70a-cd0637bc78a9
+TERM_PROGRAM_VERSION=3.5a
+SHELL=/bin/zsh
+COLORTERM=truecolor
+SECURITYSESSIONID=186b0
+LSCOLORS=Gxfxcxdxbxegedabagacad
+LANG=en_US.UTF-8
+HISTCONTROL=erasedups
+PAGER=less
+ZSH_TMUX_TERM=screen-256color
+WINDOWID=5370146416
+__CFBundleIdentifier=org.alacritty
+EDITOR=nvim
+FZF_CTRL_R_OPTS=--preview 'echo {}' --preview-window down:3:hidden:wrap --bind '?:toggle-preview'
+PATH=/Library/Developer/CommandLineTools/usr/libexec/git-core:/usr/local/go/bin:/Users/jpang/.local/bin:/Users/jpang/go/bin:/Users/jpang/.cargo/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/homebrew/opt/fzf/bin:/Users/jpang/.krew/bin
+XPC_SERVICE_NAME=0
+TERM_PROGRAM=tmux
+TMUX=/private/tmp/tmux-501/default,2237,0
+TMUX_PLUGIN_MANAGER_PATH=/Users/jpang/.tmux/plugins/
+ALACRITTY_LOG=/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/Alacritty-737.log
+LIBRARY_PATH=/usr/local/lib
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
+
+
+------------
+Diagnostic: File system
+Skipped: False
+Success: True
+Exception: None
+Log:
+Temporary directory is '/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/'...
+Checking basic file I/O...
+Writing to temporary file '/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/461a4d5f97be9efbd7d0403d'... OK
+Reading from temporary file '/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/461a4d5f97be9efbd7d0403d'... OK
+Deleting temporary file '/var/folders/mp/flwvsddj0pzbj58d1tr96yx00000gn/T/461a4d5f97be9efbd7d0403d'... OK
+Testing IFileSystem instance...
+UserHomePath: /Users/jpang
+UserDataDirectoryPath: /Users/jpang/.gcm
+GetCurrentDirectory(): /Users/jpang/Code/github.com/azure-management-and-platforms/aks-docs
+
+------------
+Diagnostic: Networking
+Skipped: False
+Success: True
+Exception: None
+Log:
+Checking networking and HTTP stack...
+Creating HTTP client... OK
+IsNetworkAvailable: True
+Sending HEAD request to http://example.com...Sending HEAD request to https://example.com... OK
+ OK
+Acquiring free TCP port... OK
+Testing local HTTP loopback connections...
+Creating new HTTP listener for http://localhost:65447/... OK
+Waiting for loopback connection... OK
+Writing response... OK
+Waiting for response data... OK
+Loopback connection data OK
+
+------------
+Diagnostic: Git
+Skipped: False
+Success: True
+Exception: None
+Log:
+Getting Git version... OK
+Git version is '2.39.5 (Apple Git-154)'
+Locating current repository...Git repository at '/Users/jpang/Code/github.com/azure-management-and-platforms/aks-docs/.git'
+ OK
+Listing all Git configuration... OK
+Git configuration:
+file:/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig	credential.helper=osxkeychain
+file:/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig	init.defaultbranch=main
+file:/Users/jpang/.gitconfig	credential.azreposcredentialtype=oauth
+file:/Users/jpang/.gitconfig	credential.helper=
+file:/Users/jpang/.gitconfig	credential.helper=/usr/local/share/gcm-core/git-credential-manager
+file:/Users/jpang/.gitconfig	credential.azrepos:org/msazure.azureauthority=https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47
+file:/Users/jpang/.gitconfig	credential.azrepos:org/msazure.username=jpang@microsoft.com
+file:/Users/jpang/.gitconfig	credential.https://dev.azure.com.usehttppath=true
+file:/Users/jpang/.gitconfig	user.name=Juan-Lee Pang
+file:/Users/jpang/.gitconfig	user.email=jpang@microsoft.com
+file:/Users/jpang/.gitconfig	pager.diff=false
+file:.git/config	core.repositoryformatversion=0
+file:.git/config	core.filemode=true
+file:.git/config	core.bare=false
+file:.git/config	core.logallrefupdates=true
+file:.git/config	core.ignorecase=true
+file:.git/config	core.precomposeunicode=true
+file:.git/config	remote.origin.url=https://github.com/azure-management-and-platforms/aks-docs.git
+file:.git/config	remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*
+file:.git/config	branch.main.remote=origin
+file:.git/config	branch.main.merge=refs/heads/main
+file:.git/config	branch.main.vscode-merge-base=origin/main
+file:.git/config	branch.main.vscode-merge-base=origin/main
+file:.git/config	branch.add-prd-proposal-issue-template.vscode-merge-base=origin/main
+
+
+------------
+Diagnostic: Credential storage
+Skipped: False
+Success: True
+Exception: None
+Log:
+ICredentialStore instance is of type: CredentialStore
+Writing test credential... OK
+Reading test credential... OK
+Deleting test credential... OK
+
+------------
+Diagnostic: Microsoft authentication (AAD/MSA)
+Skipped: False
+Success: True
+Exception: None
+Log:
+Broker is not enabled.
+Flow type is: Auto
+Gathering MSAL token cache data... OK
+CacheDirectory: /Users/jpang/.local/.IdentityService
+CacheFileName: msal.cache
+CacheFilePath: /Users/jpang/.local/.IdentityService/msal.cache
+MacKeyChainAccountName: MSALCache
+MacKeyChainServiceName: Microsoft.Developer.IdentityService
+Creating cache helper... OK
+Verifying MSAL token cache persistence... OK
+
+------------
+Diagnostic: GitHub API
+Skipped: False
+Success: True
+Exception: None
+Log:
+Using 'https://github.com/' as API target.
+Querying '/meta' endpoint... OK
+
