@@ -12,5 +12,9 @@ configuration:
     role: Maintain
   - member: qike
     role: Maintain
-  - team: aks-github
+  # Azure Container Service - CG-Read Write
+  - team: "rrd-read write-rg-22938"
+    role: Write
+  # Azure Container Service - NTDEV CG-Read Write
+  - team: "azurecontainerservice-rg-readwritentdev-8295"
     role: Write
