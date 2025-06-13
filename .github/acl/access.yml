@@ -14,7 +14,13 @@ configuration:
     role: Maintain
   # Azure Container Service - CG-Read Write
   - team: "rrd-read write-rg-22938"
-    role: Write
+    role: Push
+  - team: RCG-Read Write-CG-23637
+    role: Push
   # Azure Container Service - NTDEV CG-Read Write
   - team: "azurecontainerservice-rg-readwritentdev-8295"
-    role: Write
+    role: Push
+  - team: RAM_37c20f81-6ff2-4c2a-8fee-00c1b3324bf5
+    role: Push
+  - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
+    role: Push
