@@ -12,3 +12,5 @@ configuration:
     role: Maintain
   - member: qike
     role: Maintain
+  - team: aks-github
+    role: Write
