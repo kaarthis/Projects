@@ -35,12 +35,12 @@ Examples of addons/extensions/features that require explicit OIDC issuer enablem
 
 | Persona | Required permissions | User Journey and Success Criteria |
 |---------|----------------------|-----------------------------------|
-| Cluster Administrator | Microsoft.ContainerService/managedClusters/* | As a cluster administrator, I want new AKS clusters all AKS features/addons/extensions to be pre-configured with the most secure authentication flow without requiring me to explicitly opt-in and configure things on the cluster |
+| Cluster Administrator | Microsoft.ContainerService/managedClusters/* | As a cluster administrator, I want all new AKS clusters, features, addons, and extensions to be pre-configured with the most secure authentication flow, without requiring me to explicitly opt-in and configure them on the cluster. |
 
 ## Customers and Business Impact 
 
 Business impact:
-- Enables 100% of addons/extensions to move to workload identity based Entra authentication.
+- Enables 100% of addons/extensions to move to workload identity based Microsoft Entra authentication.
 - Is in alignment with [Security objective](https://dev.azure.com/msazure/CloudNativeCompute/_workitems/edit/31629181) and more specifically the key result of [100% of AKS clusters requiring access to Azure workloads are using workload identity](https://dev.azure.com/msazure/CloudNativeCompute/_workitems/edit/10929677)
 
 ## Existing Solutions or Expectations 
@@ -92,7 +92,7 @@ By enabling OIDC issuer by default, 100% of AKS addons, features, and extensions
 - Simplifies documentation, support, and compliance
 
 **Cons:**
-- Removes flexibility for customers who may not need OIDC issuer. While the issuer URL is a publicly accessible endpoint, we should note that it doesn't expose any customer data and that it only makes available the discovery documents for this issuer.
+- Removes flexibility for customers who may not need OIDC issuer. While the issuer URL is a publicly accessible endpoint, we should note that it doesn't expose any customer data; it only makes available the discovery documents for this issuer.
 
 ### Option 2: Enable OIDC issuer by default with opt-out
 **Pros:**
@@ -103,13 +103,13 @@ By enabling OIDC issuer by default, 100% of AKS addons, features, and extensions
 - Slightly increases complexity in cluster creation options
 - Some customers may inadvertently opt out and miss security benefits
 
-**Recommended Option:** Option 1 - Enable OIDC issuer by default with no opt-out. Rationale - Fewer permutations on user experience, in alignemnt with security, and avoids the risk of customer unknowingly opting out without understanding the implications on authentication.
+**Recommended Option:** Option 1 - Enable OIDC issuer by default with no opt-out. Rationale: Fewer permutations on user experience, in alignment with security, and avoids the risk of customers unknowingly opting out without understanding the implications on authentication.
 
 **Breaking Changes:** 
 
 - Customers who have built automation, integrations, or policies that depend on the value of the `iss` (issuer) field in Kubernetes service account tokens may experience breaking changes, as this value will change when the OIDC issuer is enabled on the cluster.
 
-**Go-to-Market:** Position as a security and usability improvement that aligns with Microsoft's zero-trust recommendations.
+**Go-to-Market:** Position this as a security and usability improvement that aligns with Microsoft's zero-trust recommendations.
 
 **Pricing:** No changes to pricing model.
 
@@ -213,4 +213,4 @@ Amazon Elastic Kubernetes Service (EKS) provides IAM roles for service accounts 
 
 EKS does not enable IRSA-related features by default, requiring manual configuration.
 
-**Competitive Advantage:** By enabling OIDC issuer by default, AKS will provide a superior out-of-the-box experience for secure workload authentication compared to both GKE and EKS, reducing friction and improving security posture from day one.
+**Competitive Advantage:** By enabling OIDC issuer by default, AKS will provide a superior out-of-the-box experience for secure workload authentication compared to both GKE and EKS, reducing friction and improving security posture from day one. This positions AKS as the most secure and user-friendly managed Kubernetes offering for workload identity.
