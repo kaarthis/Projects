@@ -118,9 +118,9 @@ By enabling OIDC issuer by default, 100% of AKS addons, features, and extensions
 ### API
 
 Updates to the AKS API specification:
-- The `managedCluster` resource will always have the `oidcIssuerProfile` enabled by default for all new clusters, so the enabled field can be removed; there is no opt-out.  
+- The `managedCluster` resource will always have the `oidcIssuerProfile` enabled by default for all new clusters, with the enable field only allowing for `true` going forward.
   - For reference, see the [`oidcIssuerProfile` section in the AKS API specification](https://github.com/Azure/azure-rest-api-specs/blob/517eaf1cca58813605768f4ddc9a59ca75173493/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.json#L5703).
-- The `oidcIssuerProfile` object will going forward only include the `issuerURL` field to allow customers to discover the OIDC issuer endpoint.
+- The `oidcIssuerProfile` object will continue to include the `issuerURL` field to allow customers to discover the OIDC issuer endpoint.
 
 ```json
 {
