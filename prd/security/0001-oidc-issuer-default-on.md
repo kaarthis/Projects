@@ -125,7 +125,7 @@ Updates to the AKS API specification:
 ```json
 {
   "oidcIssuerProfile": {
-    "issuerURL": "https://oidc.prod-aks.azure.com/..."
+    "issuerURL": "https://<region>.oic.prod-aks.azure.com/..."
   }
 }
 ```
@@ -194,23 +194,14 @@ Updates to Azure Portal:
 
 # Compete 
 
-## GKE 
+## Competitive Landscape
 
-Google Kubernetes Engine (GKE) offers Workload Identity as a feature that must be explicitly enabled during cluster creation or update. They require customers to:
-1. Enable Workload Identity on the cluster
-2. Configure node pools with Workload Identity enabled
-3. Set up service account bindings
+### GKE
 
-GKE does not enable this by default, requiring explicit customer action. For more details, see [Configure Workload Identity on GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity#enable).
+Google Kubernetes Engine (GKE) enables OIDC issuer by default for all clusters. This allows customers to immediately leverage Workload Identity for secure authentication between Kubernetes workloads and Google Cloud services without additional configuration steps. For more details, see [GKE OIDC issuer](https://azure.github.io/azure-workload-identity/docs/installation/managed-clusters.html#steps-to-get-the-oidc-issuer-url-from-a-generic-managed-cluster).
 
+### EKS
 
-## EKS
+Amazon Elastic Kubernetes Service (EKS) also enables OIDC issuer by default for clusters. This default configuration allows customers to use IAM roles for service accounts (IRSA) for secure, pod-level authentication to AWS services. For more information, see [EKS OIDC issuer documentation](https://azure.github.io/azure-workload-identity/docs/installation/managed-clusters.html#amazon-elastic-kubernetes-service-eks  ).
 
-Amazon Elastic Kubernetes Service (EKS) provides IAM roles for service accounts (IRSA) which offers similar functionality to workload identity. However:
-1. IRSA requires explicit setup and configuration ([docs](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)).
-2. Customers must create and associate IAM roles
-3. No default enablement of the underlying infrastructure
-
-EKS does not enable IRSA-related features by default, requiring manual configuration.
-
-**Competitive Advantage:** By enabling OIDC issuer by default, AKS will provide a superior out-of-the-box experience for secure workload authentication compared to both GKE and EKS, reducing friction and improving security posture from day one. This positions AKS as the most secure and user-friendly managed Kubernetes offering for workload identity.
+**Competitive Positioning:** With OIDC issuer enabled by default, AKS aligns with industry standards set by GKE and EKS, ensuring a secure and frictionless experience for workload identity adoption across all major managed Kubernetes platforms.
