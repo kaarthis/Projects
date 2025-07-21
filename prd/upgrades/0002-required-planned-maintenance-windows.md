@@ -1,10 +1,10 @@
 ---
 title: Required Planned Maintenance Windows for AKS Clusters
 wiki: ""
-pm-owners: [shasb]
-feature-leads: [shasb]
-authors: [shasb]
-stakeholders: []
+pm-owners: [kaarthis,shasb]
+feature-leads: [ye wang]
+authors: [kaarthis]
+stakeholders: [Ye, Robbie, Stephane, Matthew, Jorge]
 approved-by: [] 
 ---
 
