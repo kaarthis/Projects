@@ -393,6 +393,10 @@ az aks update \
 
 ## AWS EKS
 
+## AWS EKS
+
+## AWS EKS
+
 AWS EKS offers several mechanisms for container registry authentication:
 
 - **Manual Secret Management**: For non-ECR registries, EKS users can opt for manual creation and management of Kubernetes `imagePullSecrets` in pod specifications.
@@ -404,6 +408,7 @@ AWS EKS offers several mechanisms for container registry authentication:
 Users of GKE can also utilize imagePullSecrets in their pod specs to authenticate to custom container registries.
 
 Alternatively, users can take advantage of GKE's ability to [configure containerd](https://cloud.google.com/kubernetes-engine/docs/how-to/customize-containerd-configuration) via a user provided YAML to authenticate to custom registries via a certificate stored in Google Secret Manager.
+
 
 ## Other Managed Kubernetes Services
 
