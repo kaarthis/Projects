@@ -139,7 +139,7 @@ This feature enables customers to configure custom kubelet credential providers 
 - Whenever the customer updates the credentialProviders sub-resource with a new binary, a node restart would be required.
 
 **Benefits of above approach:**
-- Is in genereal alignment with Kubernetes upstream specifications
+- Is in general alignment with Kubernetes upstream specifications
 - Leverages familiar bootstrap ACR pattern from network isolated clusters. This way we avoid asking the customers to configure additional egress endpoints for other storage locations.
 - Provides granular control at node pool level for multi-tenant scenarios
 
