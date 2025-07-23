@@ -262,9 +262,9 @@ Following the established pattern for agent pool sub-resources in the [Azure RES
 
 #### Setting up the config
 
-As the cred provider will be based off the user passed custom credential provider config, how they set up their custom credential provider will dicate how the credential provider is ultimately configured. 
+As the cred provider will be based off the user passed custom credential provider config, the user should ensure that they create and properly configure the config file for their credential provider.
 
-A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) to set up their credential provider config.
+A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) to set up their credential provider config to ensure that they are adhering to the expected values/input.
 
 Some general points that should be noted:
 
@@ -292,6 +292,10 @@ providers:
 ```
 - There is no upper limit on the domains one can include in each credential provider's `matchImages`.
 - For all domains within each credential provider's `matchImages`, any image pulls in one's pod YAML that corresponds to the specified domain will be routed to utilize that credential provider.
+
+#### Building your container images
+
+Users are expected to push the binaries to the cluster's bootstrap ACR. Please refer to [insert bootstrap ACR doc here](aka.ms/fakelink) here for instructions on how to interact with your bootstrap ACR and build/push your container image for your credential provider binaries.
 
 ### CLI Experience
 
