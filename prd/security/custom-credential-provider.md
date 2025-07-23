@@ -398,7 +398,6 @@ az aks update \
 | 4   | Customers should be able to define their credential providers at node pool creation time and/or update existing node pools to add or modify credential providers | High  |
 | 5   | Customers should be able to easily choose to propagate their changes for a specific node pool to all node pools in their cluster | High |
 | 6   | Customers should be able to pass their credential provider binaries through a bootstrap Azure Container Registry (ACR), and AKS should be able to pull those binaries from the bootstrap ACR | High |
-| 7   | AKS should be able to perform
 | 7   | Generic logs for Azure Credential Provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
 
 ## Test Requirements
