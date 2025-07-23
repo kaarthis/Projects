@@ -45,7 +45,6 @@ These workarounds result in:
     - Provide convenience UX for at-scale definition of the custom credential provider if needed for uniform deployment across an entire cluster (a simplification above the node pool level experience)
 - Define the experience for user to be able to provide binaries to configure their BYO-crendential providers and how those can be configured with the node pool/cluster
 - Enable configuration through ARM templates, CLI, and Azure Portal
-- Allow customers that have clusters which meet the specifications to utilize [projected Service Account Tokens](https://github.com/kubernetes/enhancements/blob/master/keps/sig-auth/4412-projected-service-account-tokens-for-kubelet-image-credential-providers/README.md) for their credential provider.
 
 ### Non-Functional Goals
 
@@ -89,8 +88,6 @@ These workarounds result in:
 
 We are excited to introduce native support for custom kubelet credential providers in AKS, enabling seamless authentication to any container registry including AWS ECR, Google GCR, Harbor, and other enterprise registries. This feature eliminates the need for complex workarounds and provides the same secure, managed experience that customers enjoy with Azure Container Registry.
 
-Customers on Kubernetes version 1.34+ will be able to further configure and utilize [projected Service Account Tokens](https://github.com/kubernetes/enhancements/blob/master/keps/sig-auth/4412-projected-service-account-tokens-for-kubelet-image-credential-providers/README.md) for their credential provider, allowing them to tie credentials to workload specific service accounts for enhanced security and access controls. 
-
 **Addressing Key Challenges**
 
 This feature addresses a critical gap for enterprise customers who want to or need to pull images from multiple registry sources. Previously, customers had to implement complex workarounds involving manual secret management or third-party solutions. A common workaround has been the DaemonSet-based approach, where customers deploy a DaemonSet to install and configure credential provider binaries on each node. These workarounds are typically unsupported, fragile during cluster upgrades or scaling, and often leads to inconsistent authentication behavior and increased operational overhead.
@@ -105,8 +102,6 @@ With native credential provider support, AKS now offers enterprise-grade authent
 **Availability**
 
 The general credential provider feature will be available in all Azure regions where AKS is supported, starting with clusters running an up to date Kubernetes version. 
-
-Customers who want to utilize projected Service Account Tokens for their credential provider will need to be on Kubernetes version 1.34+.
 
 ## Proposal 
 
@@ -195,6 +190,20 @@ Customers should maintain separate registries for their application workloads an
 
 ### API
 
+**Potential paths**
+
+In creating an API, the hope was to be able to introduce some way that would allow users to be able to configure their custom credential provider at a *node pool* level, but be able to have those changes propagate to the *entire cluster* if they so choose to.
+
+| Option | Details |
+| ----   |  ----   |
+| 1      | Introduce a node-pool level API for the credential provider sub-resource. We can utilize Azure policy to do at-scale `DeployIfNotExists` across all node pools in a cluster if a user wants to apply a configuration across their entire cluster  |
+| 2      | Introduce the credential provider sub-resource at the cluster level. This will allow users to apply a configuration across whole clusters. |
+| 3      | Introduce the credential provider as a sub-resource as a sibling of the managedCluster, directly under `Microsoft.ContainerService` to allow customers to reference it from under either a cluster or agent pool resource. |
+
+The preference would be to go with **option 1**. This allows the most flexibility (node-pool level) while giving the users the option to propagate their changes across the entirity of a cluster without having to introduce a brand new sub-resource.
+
+With the preference noted, the API proposal below reflects introducing a sub-resource at the agent pool level. 
+
 **Resource URI - Node Pool Level:**
 
 The credential provider configuration will be accessible as a sub-resource under agent pools:
@@ -231,7 +240,6 @@ Following the established pattern for agent pool sub-resources in the [Azure RES
                         "args": [
                             "--region=us-west-2"
                         ],
-                        # Token attributes are optional and only needed if the user wants to configure the credential provider to use projected service account tokens. 
                         "tokenAttributes": {
                             "serviceAccountTokenAudience": "<audience for the token>",
                             "requireServiceAccount": true,
@@ -252,44 +260,11 @@ Following the established pattern for agent pool sub-resources in the [Azure RES
 }
 ```
 
-#### Utilizing Projected Service Account Tokens
-
-With the release of Kubernetes 1.34, the capability introduced in [KEP-4412](https://github.com/kubernetes/enhancements/blob/master/keps/sig-auth/4412-projected-service-account-tokens-for-kubelet-image-credential-providers/README.md) to allow kubelet credential providers to use projected Service Account Tokens is expected to graduate to stable. This capability will allow a pod to utilize it's own identity (in the form of a service account) to pull images from a custom container registry.
-
-Users will setup this feature through their credential provider configuration. A new field, `tokenAttributes`, will be introduced to allow for the configuration of the projected Service Account Token attributes. 
-
-```bash
-# Example credential provider configuration with projected Service Account Token attributes
-apiVersion: kubelet.config.k8s.io/v1
-kind: CredentialProviderConfig
-providers:
-  - name: acr-credential-provider
-    ... 
-    tokenAttributes:
-      serviceAccountTokenAudience: my-audience
-      requireServiceAccount: true
-      requiredServiceAccountAnnotationKeys:
-      - domain.io/identity-id
-      - domain.io/identity-type
-      optionalServiceAccountAnnotationKeys:
-      - domain.io/some-optional-annotation
-      - domain.io/annotation-that-does-not-exist
-```
-
-- `serviceAccountTokenAudience`: (Required) Specifies the audience for the token when making requests to the registry
-- `requireServiceAccount`: (Optional, defaults to false) When true, only pods with a service account will use this provider
-- `requiredServiceAccountAnnotationKeys`: (Optional) List of annotation keys that must be present on the pod's service account for the provider to be used
-- `optionalServiceAccountAnnotationKeys`: (Optional) Additional annotation keys that will be included in the token if present on the service account
-
-For more details on these fields and their usage, please refer to the [KEP-4412 documentation](https://github.com/kubernetes/enhancements/blob/master/keps/sig-auth/4412-projected-service-account-tokens-for-kubelet-image-credential-providers/README.md#design-details).
-
-Please note that this will also require users to [set up Service Accounts](https://kubernetes.io/docs/concepts/security/service-accounts/), and if they intend to utilize it, have the proper annotations for their Service Accounts.
-
 #### Setting up the config
 
 As the cred provider will be based off the user passed custom credential provider config, how they set up their custom credential provider will dicate how the credential provider is ultimately configured. 
 
-A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) to set up their credential provider config, and refer to the previous section for the portion related to Service Account Tokens.
+A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) to set up their credential provider config.
 
 Some general points that should be noted:
 
@@ -354,21 +329,6 @@ az aks nodepool update \
 ```
 *Recall that updating the credential provider at any time will require a node pool restart*
 
-#### Cluster Level Commands
-
-For customers who want to apply the same credential provider configuration across all node pools within a cluster, AKS will provide commands to set the credential provider at the cluster level. This is particularly useful for uniform deployments across an entire cluster.
-
-```bash
-# Apply credential provider to all node pools
-az aks update \
-    --resource-group myResourceGroup \
-    --name myAKSCluster \
-    --set-credential-provider-for-all-nodepools \
-    --credential-provider-name aws-ecr \
-    --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
-    --credential-provider-config-file ./aws-ecr-config.json
-```
-
 ### Portal Experience
 
 - **Cluster Configuration Blade**: New section for "Container Registry Authentication"
@@ -410,16 +370,14 @@ az aks update \
 | 4   | Ensure that cluster level credential provider configuration propagates correctly to all node pools in a cluster | High |
 | 5   | Ensure that credential provider binaries can be successfully pulled from the bootstrap ACR| High |
 | 6   | Test that multiple credential providers can be configured per node pool and that they function correctly | High |
-| 7   | Verify that projected Service Account Tokens can be used with credential providers for service account scoped auth/n | Medium |
-| 8   | Ensure that logs are passed to Azure Monitor and can be queried by customers for debugging | Medium |
+| 7   | Ensure that logs are passed to Azure Monitor and can be queried by customers for debugging | Medium |
 
 # Dependencies and risks 
 
 | No. | Requirement or Deliverable | Giver Team / Contact |
 |-----|---------|---------|
-| 1   | Upstream KEP-4412 in Kubernetes 1.34 for projected Service Account Tokens | Upstream |
-| 2   | Portal UX design and implementation | AKS Portal Team |
-| 3   | Azure Monitor integration for credential provider logs | Azure Monitor Team |
+| 1   | Portal UX design and implementation | AKS Portal Team |
+| 2   | Azure Monitor integration for credential provider logs | Azure Monitor Team |
 
 # Compete 
 
