@@ -285,6 +285,39 @@ For more details on these fields and their usage, please refer to the [KEP-4412 
 
 Please note that this will also require users to [set up Service Accounts](https://kubernetes.io/docs/concepts/security/service-accounts/), and if they intend to utilize it, have the proper annotations for their Service Accounts.
 
+#### Setting up the config
+
+As the cred provider will be based off the user passed custom credential provider config, how they set up their custom credential provider will dicate how the credential provider is ultimately configured. 
+
+A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) to set up their credential provider config, and refer to the previous section for the portion related to Service Account Tokens.
+
+Some general points that should be noted:
+
+- When a user user can configure multiple credential providers (with our upper limit being 3) if they have the need. The configuration may look something like:
+``` bash
+apiVersion: kubelet.config.k8s.io/v1 
+kind: CredentialProviderConfig 
+providers: 
+  - name: acr-credential-provider # credential provider 1
+    matchImages: 
+      - "*.azurecr.io/*" 
+    defaultCacheDuration: "10m" 
+ ... 
+      optionalServiceAccountAnnotationKeys: 
+      - domain.io/some-optional-annotation 
+      - domain.io/annotation-that-does-not-exist 
+  - name: eks-credential-provider # credential provider 2
+    matchImages: 
+      - "*.dkr.ecr.*.amazonaws.com/*" 
+    defaultCacheDuration: "1m" 
+ ... 
+      optionalServiceAccountAnnotationKeys: 
+      - domain.io/some-optional-annotation 
+      - domain.io/annotation-that-does-not-exist 
+```
+- There is no upper limit on the domains one can include in each credential provider's `matchImages`.
+- For all domains within each credential provider's `matchImages`, any image pulls in one's pod YAML that corresponds to the specified domain will be routed to utilize that credential provider.
+
 ### CLI Experience
 
 AKS will extend the Azure AKS CLI to support the configuration of credential providers at both node pool and optionally, the cluster level.
@@ -390,10 +423,6 @@ az aks update \
 | 3   | Azure Monitor integration for credential provider logs | Azure Monitor Team |
 
 # Compete 
-
-## AWS EKS
-
-## AWS EKS
 
 ## AWS EKS
 
