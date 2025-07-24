@@ -176,13 +176,15 @@ The design choice to leverage a bootstrap Azure Container Registry (ACR) for dis
 
 This approach ensures that customers can maintain their existing network security posture while enabling custom credential provider functionality, making it suitable for highly regulated environments and air-gapped scenarios.
 
-**Bootstrap container registry are only for cluster bootstrapping and not for user workloads:**
+**Bootstrap container registry only for cluster bootstrapping and not for user workloads:**
 
 The bootstrap ACR used for distributing credential provider binaries should be dedicated solely to the purpose of holding resources needed for cluster bootstrapping and not used for storing or pulling user workload images. This separation ensures:
 
 - **Clear Permission Boundaries**: The bootstrap ACR requires different access patterns and security policies than registries used for application images
 - **Operational Isolation**: Credential provider binary updates and application image deployments operate on different lifecycles and should not interfere with each other
 - **Security Best Practices**: Mixing infrastructure binaries with application images in the same registry can complicate security policies and audit trails
+
+With the theme of this feature being to "bring your own," customers are expected to set up their own bootstrap ACR and push their credential provider binaries to it. For details on setting up a private ACR, please refer to the "BYO ACR" section [here](https://learn.microsoft.com/en-us/azure/aks/concepts-network-isolated#how-a-network-isolated-cluster-works).
 
 Customers should maintain separate registries for their application workloads and use the bootstrap ACR exclusively for credential provider binary distribution.
 
@@ -192,7 +194,7 @@ Customers should maintain separate registries for their application workloads an
 
 **Potential paths**
 
-In creating an API, the hope was to be able to introduce some way that would allow users to be able to configure their custom credential provider at a *node pool* level, but be able to have those changes propagate to the *entire cluster* if they so choose to.
+In creating an API, the hope was to be able to introduce some way that would allow users to be able to configure their custom credential provider at a *node pool* level and have a simpler UX available to them for cluster wide configuration.
 
 | Option | Details |
 | ----   |  ----   |
@@ -335,9 +337,11 @@ az aks nodepool update \
 
 ### Portal Experience
 
-- **Cluster Configuration Blade**: New section for "Container Registry Authentication"
+- **Node Pool Configuration Blade**: New section for "Container Registry Authentication" added during node pool addition on the Portal: 
+<img width="1214" height="1277" alt="image" src="https://github.com/user-attachments/assets/1c5a7435-983d-49de-93ca-b50ae123b95c" />
+
 - **Credential Provider Setup Wizard**: Step-by-step configuration for setting up one's custom credential provider
-- **Azure Monitor Logs**: Users should be able to pull logs related to credential provider authentication events for troubleshooting
+- **Azure Monitor Logs**: Users should be able to pull logs related to the credential provider binary for troubleshooting
 
 
 # Definition of Success 
@@ -347,7 +351,6 @@ az aks nodepool update \
 | No. | Outcome | Measure | Target | Priority  |
 |-----|---------|---------|---------|--------|
 | 1   | Adoption of custom credential providers | % of customers using native credential providers vs existing workloads | 50% adoption for customers using non-ACR registries within 12 months | High |
-| 2   | Improve enterprise customer satisfaction | Customer satisfaction scores for multi-registry scenarios | Increase by 40% | High |
 | 3   | Reduce support escalations | Number of support cases related to registry authentication | Reduce by 70% | High |
 
 # Requirements 
@@ -360,9 +363,9 @@ az aks nodepool update \
 | 2   | Be able to accept, validate, and apply (or fail) configuration/binaries passed by the customer to set up their custom credential providers | High |
 | 3   | Support up to three credential providers per node pool | High |
 | 4   | Customers should be able to define their credential providers at node pool creation time and/or update existing node pools to add or modify credential providers | High  |
-| 5   | Customers should be able to easily choose to propagate their changes for a specific node pool to all node pools in their cluster | High |
+| 5   | Customers should have access to an easy UX for cluster wide configuration of their credential provider changes | High |
 | 6   | Customers should be able to pass their credential provider binaries through a bootstrap Azure Container Registry (ACR), and AKS should be able to pull those binaries from the bootstrap ACR | High |
-| 7   | Generic logs for Azure Credential Provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
+| 7   | Generic logs for a customer's BYO credential provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
 
 ## Test Requirements
 
@@ -391,7 +394,7 @@ AWS EKS offers several mechanisms for container registry authentication:
 
 - **Manual Secret Management**: For non-ECR registries, EKS users can opt for manual creation and management of Kubernetes `imagePullSecrets` in pod specifications.
 
-- **[Private Certificate Authority](https://aws.amazon.com/blogs/containers/use-private-certificates-to-enable-a-container-repository-in-amazon-eks/)**: Users can configure their EKS ndooes to use a custom container registry via private certificates installed onto the nodes to securely connect to a container image repo and pull images.
+- **[Private Certificate Authority](https://aws.amazon.com/blogs/containers/use-private-certificates-to-enable-a-container-repository-in-amazon-eks/)**: Users can configure their EKS nodes to use a custom container registry via private certificates installed onto the nodes to securely connect to a container image repo and pull images.
 
 ## Google GKE
 
