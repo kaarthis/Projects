@@ -198,7 +198,7 @@ In creating an API, the hope was to be able to introduce some way that would all
 
 | Option | Details |
 | ----   |  ----   |
-| 1      | Introduce a node-pool level API for the credential provider sub-resource. We can utilize Azure policy to do at-scale `DeployIfNotExists` across all node pools in a cluster if a user wants to apply a configuration across their entire cluster  |
+| 1      | Introduce a node-pool level API for the credential provider sub-resource. We can utilize Azure policy to do at-scale `deployIfNotExists`* across all node pools in a cluster if a user wants to apply a configuration across their entire cluster  |
 | 2      | Introduce the credential provider sub-resource at the cluster level. This will allow users to apply a configuration across whole clusters. |
 | 3      | Introduce the credential provider as a sub-resource as a sibling of the managedCluster, directly under `Microsoft.ContainerService` to allow customers to reference it from under either a cluster or agent pool resource. |
 
