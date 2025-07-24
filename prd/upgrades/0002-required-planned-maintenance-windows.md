@@ -34,6 +34,8 @@ These issues result in:
 - Enable reusable maintenance configurations across multiple clusters
 - Promote `maintenanceConfigurations` to a top-level resource alongside `managedClusters`
 - Provide migration path for existing clusters to adopt the new model
+- Ensure customer awareness through Azure Advisor recommendations, API breaking change board approval, portal banners, and targeted communications to all customers
+- Provide comprehensive support materials including enhanced documentation with Bicep/Terraform samples and knowledge base articles for troubleshooting
 
 ### Non-Functional Goals
 
@@ -62,6 +64,28 @@ These issues result in:
 - Only 16.5% of clusters using NodeImage/SecurityPatch channels have Planned Maintenance Windows (PMWs).
 - Aligns with OKR [Enable AKS to make promises about workload SLOs](https://dev.azure.com/msazure/CloudNativeCompute/_workitems/edit/29497624).
 - Upgrade CSAT score dropped to 160 in CY25, highlighting the need to boost customer satisfaction.
+
+Outages due to unintended breaking changes coming from AKS releases --
+
+**Regression Impact:**
+- **Production Outages**: Critical data path failures affecting multi-region deployments
+  - [Outage 604655061](https://portal.microsofticm.com/imp/v3/incidents/details/604655061): Azure CNI PodSubnet data path failure impacting customer workloads across regions
+  - [Incident 651582493](https://portal.microsofticm.com/imp/v3/incidents/details/651582493): azure-npm v1.6.27 CrashLoopBackOff in East US 2 EUAP
+  - [Incident 644343290](https://portal.microsofticm.com/imp/v3/incidents/details/644343290): Azure Monitor metrics service disruption
+
+**Undeclared Breaking Changes:**
+- **Root Causes**:
+  - Addon maintainers lack comprehensive breaking change detection
+  - Inconsistent interpretation of what constitutes a breaking change
+  - Limited testing coverage for complex upgrade scenarios
+  - Example: [KEDA Issue #4699](https://github.com/kedacore/keda/issues/4699) - Breaking changes not properly documented leading to customer complaints and tickets.
+
+- **Customer Impact**:
+  - Breaking changes deployed as patches causing immediate workload failures
+  - [Risk 32386375](https://portal.microsofticm.com/imp/v3/risks/details/32386375): CCP features released to stable versions without proper testing
+  - [Incident 528638871](https://portal.microsofticm.com/imp/v3/incidents/details/528638871): NFS mount failures on Azure Linux nodepools after patch update
+  
+  For more such cases refer to the [Addon Release Problem Statement and Motivation document](https://microsoft.sharepoint.com/:w:/r/teams/azurecontainercompute/_layouts/15/Doc.aspx?sourcedoc=%7B9D000F16-5F05-47DA-8420-13BE997E2EC1%7D&file=Addon%20Release%20Problem%20Statement%20and%20Motivation.docx&wdOrigin=TEAMS-MAGLEV.p2p_ns.rwc&action=default&mobileredirect=true).
 
 ## Existing Solutions or Expectations 
 
@@ -121,6 +145,25 @@ Starting with Kubernetes version 1.36, all AKS clusters must have at least one m
 - Must configure maintenance windows before upgrading to 1.36
 - Can use existing `az aks update` commands to add maintenance configuration
 - Option to share maintenance configurations from other clusters
+
+### Communication and Process Strategy
+
+**API Breaking Change Management:**
+- Submit proposal to Azure API Breaking Change Board for formal approval and governance oversight
+- Coordinate with Azure Terraform Provider team 6 months prior to enforcement with detailed migration guides and resource mapping documentation
+- Create comprehensive Bicep template samples internally for ARM template compatibility and customer adoption
+
+**Customer Awareness Campaign:**
+- **Azure Advisor**: Deploy targeted recommendations 90 days before K8s 1.36 release identifying clusters without maintenance windows
+- **Portal Integration**: Display prominent banners in AKS portal blade with migration guidance and timelines
+- **Direct Communications**: Send targeted emails to subscription owners with affected clusters, including step-by-step migration instructions
+- **Documentation Hub**: Create dedicated migration portal with FAQs, troubleshooting guides, and infrastructure-as-code samples
+
+**Support Infrastructure:**
+- **Knowledge Base**: Comprehensive articles covering common migration scenarios, error codes, and resolution steps
+- **Sample Library**: Curated Bicep, Terraform, and ARM templates demonstrating maintenance configuration patterns
+- **Support Training**: Equip CSS teams with specialized knowledge for handling migration-related inquiries
+- **Monitoring Dashboard**: Track adoption rates and identify customers requiring proactive assistance
 
 ### Option 1: Required Maintenance Windows with Top-Level Resource (Recommended)
 
