@@ -202,6 +202,7 @@ In creating an API, the hope was to be able to introduce some way that would all
 | 2      | Introduce the credential provider sub-resource at the cluster level. This will allow users to apply a configuration across whole clusters. |
 | 3      | Introduce the credential provider as a sub-resource as a sibling of the managedCluster, directly under `Microsoft.ContainerService` to allow customers to reference it from under either a cluster or agent pool resource. |
 
+*The `deployIfNotExists` [policy](https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deploy-if-not-exists)* runs when a RP handles a create/update resource request and returns a success status code. For the purposes of this effort, it can be configured to see if `agentPools` have the credential provider resource enabled and run a deployment to enable it if not.
 The preference would be to go with **option 1**. This allows the most flexibility (node-pool level) while giving the users the option to propagate their changes across the entirity of a cluster without having to introduce a brand new sub-resource.
 
 With the preference noted, the API proposal below reflects introducing a sub-resource at the agent pool level. 
