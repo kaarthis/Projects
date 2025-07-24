@@ -321,6 +321,20 @@ az aks nodepool add \
     --credential-provider-config-file ./aws-ecr-config.json
 ```
 
+The passed `--credential-provider-config-file` should [mimic the configuration defined by upstream](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/). An example config to configure one credential provider is given below:
+
+```yaml
+apiVersion: kubelet.config.k8s.io/v1 
+kind: CredentialProviderConfig 
+providers: 
+  - name: acr-credential-provider # credential provider 1
+    matchImages: 
+      - "*.azurecr.io/*" 
+    defaultCacheDuration: "10m" 
+ ... 
+      optionalServiceAccountAnnotationKeys: 
+      - domain.io/some-optional-annotation 
+      - domain.io/annotation-that-does-not-exist
 **Updating an existing node pool**
 
 Customers can update an existing AKS node pool to add or modify the credential provider configuration using the `az aks nodepool update` command:
