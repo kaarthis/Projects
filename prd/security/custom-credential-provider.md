@@ -105,6 +105,12 @@ The general credential provider feature will be available in all Azure regions w
 
 ## Proposal 
 
+**ACR**
+
+The contents of this PRD will treat ACR as explicitly out of scope. ACR custom domains is not out yet; additionally, ACR being a first class experience in Azure can likely have a different experience than what is laid out here for BYO credential provider. 
+
+If a customer tries to pass any binaries that mess with the `acr-credential-provider`, those PUTs will be **rejected**. 
+
 **Implementation Overview:**
 
 This feature enables customers to configure custom kubelet credential providers on AKS clusters through a three-step process:
