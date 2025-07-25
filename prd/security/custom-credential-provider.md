@@ -229,7 +229,7 @@ Following the established pattern for agent pool sub-resources in the [Azure RES
         {
             "name": "nodepool1",
             "credentialProvider": {
-                "binaryImageTag": "aws-ecr-provider:v1.0.0",  # Will point to the bootstrap ACR image tag containing the intended credential provider binary.
+                "binaryImageReference": "aws-ecr-provider:v1.0.0",  # Will point to the bootstrap ACR image tag containing the intended credential provider binary.
                 "config": {
                     "provider":{
                         "name": "aws-ecr-credential-provider",
