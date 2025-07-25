@@ -312,6 +312,10 @@ AKS will extend the Azure AKS CLI to support the configuration of credential pro
 
 #### Node Pool Level Configuration
 
+Note that, if selected, being able to access/pull the config/binaries (respectively) for the custom credential provider will be a part of nodepool creation/update. 
+
+Initially, binary pulls from ACR will be treated normally (e.g. no caching, pulled at time of request input). If users observe unbearable latency/issues resulting from the bootstrap ACR pulls, we will iterate and introduce mechanisms to remediate. 
+
 **Creating a node pool**
 
 Customers that create a new AKS node pool can specify the credential provider configuration using the `az aks nodepool create` command, and add in the `--credential-provider-name`, `--credential-provider-binary-image-tag`, and `--credential-provider-config-file` parameters to set up their credential provider:
