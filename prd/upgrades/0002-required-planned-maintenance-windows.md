@@ -127,16 +127,17 @@ With this new user experience, customers can configure planned maintenance windo
 ### Kubernetes 1.36 Enforcement
 
 Starting with Kubernetes version 1.36, all AKS clusters must have at least one maintenance configuration:
-- **New clusters**: Cannot be created without specifying a maintenance configuration
-- **Existing clusters**: Must add a maintenance configuration before upgrading to 1.36
-- **API enforcement**: PUT operations (create/update) will be blocked for clusters without maintenance configurations
+- **New clusters**: Cannot be created without specifying a maintenance configuration (any maintanence configuration is fine)
+- **Existing clusters**: Must add a maintenance configuration (any type) before upgrading to 1.36
+- **API enforcement**: PUT operations (create/update) will be blocked for clusters without any maintenance configurations.
 
 ### Migration Path for Existing Clusters
 
+Migration timeline must be finalized before the start of Kubernetes 1.36 preview testing.
 **Clusters with existing maintenance windows:**
 - Automatically migrated to the new API model with zero downtime
 - Migration process:
-  1. AKS creates corresponding top-level maintenance configuration resources
+  1. AKS creates corresponding top-level maintenance configuration resources (peer resource) even if a cluster has atleast 1 sub resource (legacy) configuration set.
   2. Cluster resources updated to include `maintenanceConfigurationIds` references
   3. All schedules and configurations preserved exactly as configured
 - No customer action required
@@ -145,6 +146,31 @@ Starting with Kubernetes version 1.36, all AKS clusters must have at least one m
 - Must configure maintenance windows before upgrading to 1.36
 - Can use existing `az aks update` commands to add maintenance configuration
 - Option to share maintenance configurations from other clusters
+
+### Auto-Upgrade Enabled Clusters - Expected Behavior
+
+**Current State Analysis:**
+Clusters with auto-upgrade channels enabled represent a critical segment requiring special attention, as these customers have adopted a hands-off approach to cluster management and rely on AKS to handle upgrades automatically. These clusters will eventually auto-upgrade to Kubernetes 1.36, where the maintenance configuration requirement will be enforced.
+
+**Behavior Matrix:**
+
+| Auto-Upgrade Channel (Minor Version) | Maintenance Config | Expected Behavior |
+|--------------------------------------|-------------------|-------------------|
+| Enabled | With MTC (existing sub-resource) | ✅ Auto-migrated to peer resource, continues auto-upgrading without interruption |
+| Enabled | Without MTC | ⚠️ **BLOCKED** on K8s 1.36 auto-upgrade until maintenance configuration added |
+| Disabled | With MTC (existing sub-resource) | ✅ Auto-migrated to peer resource, manual upgrade to 1.36+ requires maintenance configuration |
+| Disabled | Without MTC | ⚠️ **BLOCKED** on manual upgrade to K8s 1.36+ until maintenance configuration added |
+
+**Critical Risk:** Customers without any maintenance configurations will experience auto-upgrade failures when their clusters attempt to upgrade to Kubernetes 1.36, breaking their hands-off operational model.
+
+**Targeted Communication Strategy:**
+Given that these customers rely on AKS for automatic management and may not actively monitor standard communication channels, a focused 3-part communication outreach will be implemented specifically for clusters without maintenance configurations:
+
+1. **High-Priority Alert (90 days before K8s 1.36)**: Direct email to subscription owners and cluster contributors with urgent action required messaging
+2. **Escalation Notice (45 days before K8s 1.36)**: Follow-up communication with specific cluster IDs and step-by-step remediation instructions
+3. **Final Warning (14 days before K8s 1.36)**: Critical alert with immediate action deadline and support contact information
+
+**Note:** Clusters that receive peer resources through automatic migration of existing maintenance configurations will continue auto-upgrading without interruption and are excluded from this targeted outreach.
 
 ### Communication and Process Strategy
 
