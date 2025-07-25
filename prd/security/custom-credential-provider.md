@@ -370,6 +370,13 @@ To illustrate this point:
    - The logic would be `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`. `newProviders: [oldest] quay-provider, jfrog-provider [newest]`
    - The end result on the cluster would be `existingProviders: [oldest] ghcr-cred-provider, quay-provider, jfrog-provider [newest]`, with `aws-cred-provider` being overridden. 
 
+**matchImages resolution**
+
+In the event that >1 provider is configured with the same value in their `matchImage` field (e.g. both my `aws-ecr-provider` and my `ghcr-provider` have `*.ghcr.io/*`, the [upstream behavior](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) will be invoked.
+
+Namely: "Multiple providers may match against a single image, in which case credentials from all providers will be returned to the kubelet. If multiple providers are called for a single image, the results are combined. If providers return overlapping auth keys, the value from the provider earlier in this list is used."
+- Earlier in the list, in this case, will equate the "older" cred provider. 
+
 ### Portal Experience
 
 - **Node Pool Configuration Blade**: New section for "Container Registry Authentication" added during node pool addition on the Portal: 
