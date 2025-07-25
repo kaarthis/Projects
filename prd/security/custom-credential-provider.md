@@ -360,6 +360,13 @@ If a customer wants to configure multiple credential providers on the nodepool, 
          --credential-provider-config-file ./aws-ecr-config.json ./ghcr-config.json 
      ```
 
+   - If a customer provides an input where any arguments (in either the binary of config parameters) is duplicated, the request should be **rejected**. For example, this would also be rejected:
+     ```bash
+     az aks nodepool update \
+     ...
+         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "aws-ecr-provider:v1.0.0" \
+     ```
+
 Once the customer hits the limit of three credential providers in the nodepool, if they try again to add another credential provider, the oldest configured credential provider will be replaced with the newest one (with this cycle repeating; as the customer adds more new cred providers, the oldest of the 3 will always be replaced by the newest one being added). 
 - If they're adding more than one registry at a time (assuming we go with the second proposal), the oldest/newest relationship above will still be maintained, with the nuance being that left most argument/config/binary will be treated as oldest, becoming "newer" as you move to the right.
 
