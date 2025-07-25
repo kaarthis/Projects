@@ -386,7 +386,7 @@ az aks nodepool update \
 |-----|-----------------------------------------------|----------|
 | 1   | Customers should be able to configure custom kubelet credential providers for their AKS node pools via API, ARM templates, CLI, and Azure Portal | High |
 | 2   | Be able to accept, validate, and apply (or fail) configuration/binaries passed by the customer to set up their custom credential providers | High |
-| 3   | Support up to three credential providers per node pool | High |
+| 3   | Support up to three non-ACR credential providers per node pool | High |
 | 4   | Customers should be able to define their credential providers at node pool creation time and/or update existing node pools to add or modify credential providers | High  |
 | 5   | Customers should have access to an easy UX for cluster wide configuration of their credential provider changes | High |
 | 6   | Customers should be able to pass their credential provider binaries through a bootstrap Azure Container Registry (ACR), and AKS should be able to pull those binaries from the bootstrap ACR | High |
