@@ -413,7 +413,8 @@ Namely: "Multiple providers may match against a single image, in which case cred
 | 4   | Customers should be able to define their credential providers at node pool creation time and/or update existing node pools to add or modify credential providers | High  |
 | 5   | Customers should have access to an easy UX for cluster wide configuration of their credential provider changes | High |
 | 6   | Customers should be able to pass their credential provider binaries through a bootstrap Azure Container Registry (ACR), and AKS should be able to pull those binaries from the bootstrap ACR | High |
-| 7   | Generic logs for a customer's BYO credential provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
+| 7   | Ensure that the error cases documented in this PRD (e.g. repeated binary or config argument passed in the CLI) result in the PUT request being rejected. | High |
+| 8   | Generic logs for a customer's BYO credential provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
 
 ## Test Requirements
 
@@ -425,7 +426,9 @@ Namely: "Multiple providers may match against a single image, in which case cred
 | 4   | Ensure that cluster level credential provider configuration propagates correctly to all node pools in a cluster | High |
 | 5   | Ensure that credential provider binaries can be successfully pulled from the bootstrap ACR| High |
 | 6   | Test that multiple credential providers can be configured per node pool and that they function correctly | High |
-| 7   | Ensure that logs are passed to Azure Monitor and can be queried by customers for debugging | Medium |
+| 7   | Ensure that a failure is returned if a user attempts to alter the `acr-credential-provider` in their config and/or binary | High | 
+| 8   | Ensure that requests fail properly if the user misconfigures the CLI arguments detailed in the PRD | High | 
+| 9   | Ensure that logs are passed to Azure Monitor and can be queried by customers for debugging | Medium |
 
 # Dependencies and risks 
 
