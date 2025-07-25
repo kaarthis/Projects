@@ -277,7 +277,7 @@ A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/ad
 
 Some general points that should be noted:
 
-- A user can configure multiple custom credential providers per node pool, with 3 being the upper limit. If they choose to configure multiple credential providers, they will need to make sure that they pass the different binaries and configs to AKS (see more details in the CLI section)
+- A user can configure multiple custom credential providers per node pool, with 3 being the upper limit. If they choose to configure multiple credential providers, they will need to make sure that they pass the different binaries and configs to AKS, one binary/config per credential provider they would like (see more details in the CLI section)
 - There is no upper limit on the domains one can include in each credential provider's `matchImages`.
 - For all domains within each credential provider's `matchImages`, any image pulls in one's pod YAML that corresponds to the specified domain will be routed to utilize that credential provider.
 
