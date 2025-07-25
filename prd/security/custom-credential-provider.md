@@ -134,7 +134,7 @@ This feature enables customers to configure custom kubelet credential providers 
 
 **Step 3: Node Pool Level Configuration**
 - Credential provider configuration is modeled as a sub-resource under agent pools in the AKS API
-- Each agent pool can have up to 3 (we propose to start with three for now) credential provider configuration
+- Each agent pool can have up to 3 (proposed upper limit to start with) non-ACR credential provider configurations
    - Multiple credential provider configs per node pool will support scenarios where different node pools need multiple different registry authentication
 - Configuration is applied during node provisioning and maintained across upgrades
 - Whenever the customer updates the credentialProviders sub-resource with a new binary, a node restart would be required.
