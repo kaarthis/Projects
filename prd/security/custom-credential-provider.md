@@ -53,7 +53,7 @@ These workarounds result in:
 
 ### Non-Goals
 
-- Does not replace existing ACR integration (ACR remains the recommended registry for Azure workloads)
+- Does not replace or plug into existing ACR integration (ACR remains the recommended registry for Azure workloads)
 - Does not modify Kubernetes upstream credential provider specification (we will align with the upstream configuration specs)
 
 ## Narrative/Personas
@@ -277,28 +277,7 @@ A user should follow the [upstream guidance](https://kubernetes.io/docs/tasks/ad
 
 Some general points that should be noted:
 
-- When a user user can configure multiple credential providers (with our upper limit being 3) if they have the need. The configuration may look something like:
-``` bash
-apiVersion: kubelet.config.k8s.io/v1 
-kind: CredentialProviderConfig 
-providers: 
-  - name: acr-credential-provider # credential provider 1
-    matchImages: 
-      - "*.azurecr.io/*" 
-    defaultCacheDuration: "10m" 
- ... 
-      optionalServiceAccountAnnotationKeys: 
-      - domain.io/some-optional-annotation 
-      - domain.io/annotation-that-does-not-exist 
-  - name: eks-credential-provider # credential provider 2
-    matchImages: 
-      - "*.dkr.ecr.*.amazonaws.com/*" 
-    defaultCacheDuration: "1m" 
- ... 
-      optionalServiceAccountAnnotationKeys: 
-      - domain.io/some-optional-annotation 
-      - domain.io/annotation-that-does-not-exist 
-```
+- A user can configure multiple custom credential providers per node pool, with 3 being the upper limit. If they choose to configure multiple credential providers, they will need to make sure that they pass the different binaries and configs to AKS (see more details in the CLI section)
 - There is no upper limit on the domains one can include in each credential provider's `matchImages`.
 - For all domains within each credential provider's `matchImages`, any image pulls in one's pod YAML that corresponds to the specified domain will be routed to utilize that credential provider.
 
@@ -337,15 +316,16 @@ The passed `--credential-provider-config-file` should [mimic the configuration d
 apiVersion: kubelet.config.k8s.io/v1 
 kind: CredentialProviderConfig 
 providers: 
-  - name: acr-credential-provider # credential provider 1
+  - name: ghcr-credential-provider # credential provider 1
     matchImages: 
-      - "*.azurecr.io/*" 
+      - "*.ghcr.io/*" 
     defaultCacheDuration: "10m" 
  ... 
       optionalServiceAccountAnnotationKeys: 
       - domain.io/some-optional-annotation 
       - domain.io/annotation-that-does-not-exist
 **Updating an existing node pool**
+```
 
 Customers can update an existing AKS node pool to add or modify the credential provider configuration using the `az aks nodepool update` command:
 
@@ -358,13 +338,42 @@ az aks nodepool update \
     --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
     --credential-provider-config-file ./aws-ecr-config.json
 ```
-*Recall that updating the credential provider at any time will require a node pool restart*
+- Recall that updating the credential provider at any time will require a node pool restart
+- If during an update the customer provides a binary/config (config will be determined matching based on what the credential providers `- name` is) that is the same as one already configured on the node pool, the existing configuration will be replaced.
+
+If a customer wants to configure multiple credential providers on the nodepool, there are a few paths we can allow this:
+
+- We can have the UX simply require the customer to do an `az aks nodepool update` to an existing cluster. We will make a note of when a credential provider was added to the cluster.
+- We can alternatively have `--credential-provider-binary-image-tag` and `--credential-provider-config-file` accept multiple **space separated** entries.
+   - Each item in the space separated "array" will be index matched to the corresponding index of the other. This will look like:
+     ```bash
+     az aks nodepool update \
+     ...
+         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
+         --credential-provider-config-file ./aws-ecr-config.json ./ghcr-config.json ./quay-config.json
+     ```
+   - If a customer provides an input where either the binary of config field has more arguments than the other, the request should be **rejected**. For example, this would be rejected:
+     ```bash
+     az aks nodepool update \
+     ...
+         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
+         --credential-provider-config-file ./aws-ecr-config.json ./ghcr-config.json 
+     ```
+
+Once the customer hits the limit of three credential providers in the nodepool, if they try again to add another credential provider, the oldest configured credential provider will be replaced with the newest one (with this cycle repeating; as the customer adds more new cred providers, the oldest of the 3 will always be replaced by the newest one being added). 
+- If they're adding more than one registry at a time (assuming we go with the second proposal), the oldest/newest relationship above will still be maintained, with the nuance being that left most argument/config/binary will be treated as oldest, becoming "newer" as you move to the right.
+
+To illustrate this point: 
+1. Let's assume I have `az aks nodepool add` a cluster with `aws-cred-provider` already configured on there.
+2. I now `az aks nodepool update` in `ghcr-cred-provider`. The current configuration on the nodepool would look like (super simplified): `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`.
+3. Now, suddenly I `az aks nodepool update` again, this time I pass `--credential-provider-binary-image-tag "quay-provider:v1.0.0" "jfrog-provodier:latest"` (config CLI won't be included, but assume that's passed and configured correctly).
+   - The logic would be `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`. `newProviders: [oldest] quay-provider, jfrog-provider [newest]`
+   - The end result on the cluster would be `existingProviders: [oldest] ghcr-cred-provider, quay-provider, jfrog-provider [newest]`, with `aws-cred-provider` being overridden. 
 
 ### Portal Experience
 
 - **Node Pool Configuration Blade**: New section for "Container Registry Authentication" added during node pool addition on the Portal: 
 <img width="1214" height="1277" alt="image" src="https://github.com/user-attachments/assets/1c5a7435-983d-49de-93ca-b50ae123b95c" />
-
 - **Credential Provider Setup Wizard**: Step-by-step configuration for setting up one's custom credential provider
 - **Azure Monitor Logs**: Users should be able to pull logs related to the credential provider binary for troubleshooting
 
