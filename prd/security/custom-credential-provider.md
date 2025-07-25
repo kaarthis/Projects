@@ -211,7 +211,77 @@ In creating an API, the hope was to be able to introduce some way that would all
 | 2      | Introduce the credential provider sub-resource at the cluster level. This will allow users to apply a configuration across whole clusters. |
 | 3      | Introduce the credential provider as a sub-resource as a sibling of the managedCluster, directly under `Microsoft.ContainerService` to allow customers to reference it from under either a cluster or agent pool resource. |
 
-*The `deployIfNotExists` [policy](https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deploy-if-not-exists)* runs when a RP handles a create/update resource request and returns a success status code. For the purposes of this effort, it can be configured to see if `agentPools` have the credential provider resource enabled and run a deployment to enable it if not.
+*Users can create a `deployIfNotExists` [policy](https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deploy-if-not-exists), then create a policy assignment in their node pool to run so that node pools without a credential provider created will have one created.
+
+Users should take and modify this policy definition to their specifications before creating a policy assignment to define the [scope to apply the policy](https://learn.microsoft.com/en-us/azure/governance/policy/how-to/programmatically-create) (presumably at the cluster level). 
+
+```json
+    "if": {
+      "allOf": [
+        {
+          "field": "type",
+          "equals": "Microsoft.ContainerService/managedClusters/agentPools"
+        }
+      ]
+    },
+    "then": {
+      "effect": "deployIfNotExists",
+      "details": {
+        "type": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders",
+        "name": "current",
+        "evaluationDelay": "AfterProvisioning",
+        "roleDefinitionIds": [
+          "/subscriptions/{subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/{roleGUID}"
+        ],
+        "existenceCondition": {
+          "field": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders/",
+          "equals": "Enabled"
+        },
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "credentialProviderName": {
+                  "type": "string"
+                },
+                "credentialProviderConfig": {
+                  "type": "string"
+                },
+                "credentialProviderBinDir": {
+                  "type": "string"
+                }
+              },
+              "resources": [
+                {
+                  "type": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders",
+                  "apiVersion": "2025-05-01", # Example, replace with the release API version
+                  "name": "[concat(parameters('clusterName'), '/', parameters('agentPoolName'), '/', parameters('credentialProviderName'))]",
+                  "properties": {
+                    "enabled": "[parameters('credentialProviderConfig').enabled]",
+                    "config": "[parameters('credentialProviderConfig').config]",
+                    "binDir": "[parameters('credentialProviderBinDir')]"
+                  }
+                }
+              ],
+            },
+            "parameters": {
+              "clusterName": {
+                "value": "[first(split(field('fullName'), '/'))]"
+              },
+              "agentPoolName": {
+                "value": "[field('name')]"
+              },
+              "credentialProviderName": {
+                "value": "default-credential-provider"
+              },
+            }
+          }
+        }
+      }
+    }
 The preference would be to go with **option 1**. This allows the most flexibility (node-pool level) while giving the users the option to propagate their changes across the entirity of a cluster without having to introduce a brand new sub-resource.
 
 With the preference noted, the API proposal below reflects introducing a sub-resource at the agent pool level. 
