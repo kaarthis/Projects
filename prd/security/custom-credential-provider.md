@@ -162,9 +162,12 @@ AKS will perform the following validations to ensure credential provider functio
 
 1. **Configuration Validation**: AKS validates the credential provider configuration against the Kubernetes credential provider schema before applying it to nodes. This includes verifying required fields, format compliance, and supported provider types.
 
-2. **Binary Availability Validation**: AKS validates that the credential provider binary referenced in the `binaryImageTag` field can be successfully pulled from the specified bootstrap ACR. This validation occurs during node provisioning and configuration updates.
+2. **Binary Availability Validation**: AKS validates that the credential provider binary referenced in the `binaryImageReference` field can be successfully pulled from the specified bootstrap ACR. This validation occurs during node provisioning and configuration updates.
 
 The results and any errors from these validations will be surfaced in the status of the `credentialProviders` sub-resource, providing clear feedback to customers about configuration issues or binary availability problems.
+
+If at any point an error in the configuration occurs (e.g. the cred provider configuration is deleted on the node, the binaries removed from the bootstrap ACR, etc), no cluster lifecycle operations (e.g. node bootstrapping, node updates) will fail/be blocked. Instead, image pulls to the specified custom container registry will simply fail. Users can update their credential provider(s) (detailed in the CLI section below) to pass in new or refresh configs/binaries.
+
 
 ### Logs
 
