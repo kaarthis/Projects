@@ -109,7 +109,7 @@ The general credential provider feature will be available in all Azure regions w
 
 The contents of this PRD will treat ACR as explicitly out of scope and focus solely on non-ACR container registries. ACR custom domains is not out yet; additionally, ACR being a first-class experience in Azure can likely have a different experience than what is laid out here for BYO credential provider. 
 
-If a customer tries to pass any binaries that mess with the `acr-credential-provider`, those PUTs will be **rejected**. 
+If a customer tries to pass any binaries that mess with the `acr-credential-provider`, those PUTs will be **rejected**. In a similar vein, existing `acr-credential-provider` binaries that already exist on the node will not count towards the 3 credential provider limit.
 
 **Implementation Overview:**
 
