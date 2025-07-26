@@ -126,10 +126,22 @@ With this new user experience, customers can configure planned maintenance windo
 
 ### Kubernetes 1.36 Enforcement
 
-Starting with Kubernetes version 1.36, all AKS clusters must have at least one maintenance configuration:
-- **New clusters**: Cannot be created without specifying a maintenance configuration (any maintanence configuration is fine)
-- **Existing clusters**: Must add a maintenance configuration (any type) before upgrading to 1.36
-- **API enforcement**: PUT operations (create/update) will be blocked for clusters without any maintenance configurations.
+Starting with Kubernetes version 1.36, all AKS clusters must have specific maintenance configurations based on their upgrade settings:
+
+**Baseline Requirement (All Clusters):**
+- **New clusters without auto-upgrade, node OS upgrade, or node recycle policy**: Must have maintenance configuration with `maintenanceConfigurationType: "default"` when creating clusters on 1.36+
+- **Existing clusters without auto-upgrade, node OS upgrade, or node recycle policy**: Must have maintenance configuration with `maintenanceConfigurationType: "default"` when upgrading to 1.36
+- **API enforcement**: PUT operations (create/update) will be blocked for clusters without the required maintenance configuration types
+
+**Channel-Specific Requirements:**
+- **Auto-upgrade channel enabled**: Must have maintenance configuration with `maintenanceConfigurationType: "aksManagedAutoUpgradeSchedule"` configured
+- **Node OS channel enabled OR node recycle policy set**: Must have maintenance configuration with `maintenanceConfigurationType: "aksManagedNodeOSUpgradeSchedule"` configured
+- **Multiple channels enabled**: Must have corresponding maintenance configuration types for each enabled channel
+
+**Enforcement Logic:**
+- **New clusters**: Cannot be created without the appropriate maintenance configuration type(s) based on their upgrade channel settings. For clusters without any upgrade channels, a maintenance configuration with `maintenanceConfigurationType: "default"` is required.
+- **Existing clusters**: Must add the required maintenance configuration type(s) before upgrading to 1.36
+- **Channel enablement**: Clusters attempting to enable upgrade channels must have the corresponding maintenance configuration types already referenced
 
 ### Migration Path for Existing Clusters
 
@@ -141,6 +153,30 @@ Migration timeline must be finalized before the start of Kubernetes 1.36 preview
   2. Cluster resources updated to include `maintenanceConfigurationIds` references
   3. All schedules and configurations preserved exactly as configured
 - No customer action required
+
+**Example: Managed Cluster After Peer Resource Migration**
+
+After migration, a cluster with all three maintenance configuration types will reference the new top-level resources:
+
+```json
+{
+  "apiVersion": "2025-03-01",
+  "type": "Microsoft.ContainerService/managedClusters",
+  "name": "myProductionCluster",
+  "location": "eastus",
+  "properties": {
+    "kubernetesVersion": "1.36.0",
+    "maintenanceConfigurationIds": [
+      "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.ContainerService/maintenanceConfigurations/default",
+      "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule",
+      "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule"
+    ],
+    // Legacy sub-resource configurations removed after migration
+      }
+}
+```
+
+The cluster now references three separate maintenance configuration resources that can be shared with other clusters, eliminating the need for duplicate configurations.
 
 **Clusters without maintenance windows:**
 - Must configure maintenance windows before upgrading to 1.36
@@ -154,14 +190,21 @@ Clusters with auto-upgrade channels enabled represent a critical segment requiri
 
 **Behavior Matrix:**
 
-| Auto-Upgrade Channel (Minor Version) | Maintenance Config | Expected Behavior |
-|--------------------------------------|-------------------|-------------------|
-| Enabled | With MTC (existing sub-resource) | ✅ Auto-migrated to peer resource, continues auto-upgrading without interruption |
-| Enabled | Without MTC | ⚠️ **BLOCKED** on K8s 1.36 auto-upgrade until maintenance configuration added |
-| Disabled | With MTC (existing sub-resource) | ✅ Auto-migrated to peer resource, manual upgrade to 1.36+ requires maintenance configuration |
-| Disabled | Without MTC | ⚠️ **BLOCKED** on manual upgrade to K8s 1.36+ until maintenance configuration added |
+| Cluster Configuration | Required Maintenance Config | Expected Behavior |
+|----------------------|----------------------------|-------------------|
+| No auto-upgrade, no node OS channel, no node recycle policy | `default` maintenance configuration | ✅ Manual upgrade to 1.36+ requires default maintenance configuration |
+| Auto-upgrade channel enabled | `aksManagedAutoUpgradeSchedule` (required only if auto-upgrade channel is enabled) | ✅ Auto-migrated if exists, continues auto-upgrading; ⚠️ **BLOCKED** if missing |
+| Node OS channel enabled OR node recycle policy set | `aksManagedNodeOSUpgradeSchedule` (required only if node OS channel is enabled OR node recycle policy is set) | ✅ Auto-migrated if exists, continues node OS upgrades; ⚠️ **BLOCKED** if missing |
+| Multiple channels enabled | Corresponding maintenance configs for each enabled channel | ✅ Auto-migrated if all exist; ⚠️ **BLOCKED** if any required config missing |
 
-**Critical Risk:** Customers without any maintenance configurations will experience auto-upgrade failures when their clusters attempt to upgrade to Kubernetes 1.36, breaking their hands-off operational model.
+**Critical Risk:** Customers without the required maintenance configurations will experience upgrade failures when their clusters attempt to upgrade to Kubernetes 1.36, breaking their operational model.
+
+**Specific Enforcement Rules:**
+1. **Baseline clusters** (no upgrade channels): Require `default` maintenance configuration to ensure predictable maintenance schedules
+2. **Auto-upgrade enabled**: Must have `aksManagedAutoUpgradeSchedule` to control when automatic minor version upgrades occur
+3. **Node OS upgrade enabled**: Must have `aksManagedNodeOSUpgradeSchedule` to control when node image and security patches are applied
+4. **Node recycle policy set**: Must have `aksManagedNodeOSUpgradeSchedule` to control when node recycling maintenance occurs
+5. **Multiple features enabled**: Must have all corresponding maintenance configurations (cumulative requirement)
 
 **Targeted Communication Strategy:**
 Given that these customers rely on AKS for automatic management and may not actively monitor standard communication channels, a focused 3-part communication outreach will be implemented specifically for clusters without maintenance configurations:
@@ -198,7 +241,7 @@ Given that these customers rely on AKS for automatic management and may not acti
 - Require maintenance window specification for all new cluster creation
     - If customers want to just proceed forward with cluster creation without giving careful consideration to date/time for a maintenance window, they can do so by just providing an arbitrary date time (for example, Sunday 2:00)
 - Allow multiple clusters to reference the same maintenance configuration
-- CLI and portal experiences will only ask for a required day of the week and time window inputs as required, AKS will auto-translate and create maintenance configuration resources of the different configuration types and reference them. Instead of this simpler UX, if the customer wants to create these maintenance configuration resources themselves and reference them in AKS cluster, they will have an option to do so.
+- CLI and portal experiences will only ask for a required day of the week and time window inputs as required, AKS will auto-translate and create maintenance configuration resources with GUID-based names for each required configuration type and reference them. Instead of this simpler UX, if the customer wants to create these maintenance configuration resources themselves with custom names and reference them in AKS cluster, they will have an option to do so.
 
 **Pros:**
 - Eliminates unexpected upgrade disruptions
@@ -281,28 +324,19 @@ This option fully addresses both customer pain points while providing a foundati
 
 _Resource URIs for Maintenance Configuration Types:_
 
-    - **Default Maintenance Configuration**
+    - **Maintenance Configuration (any name)**
         ```
-        /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/maintenanceConfigurations/default
-        ```
-
-    - **AKS Managed Node OS Upgrade Schedule**
-        ```
-        /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule
+        /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/maintenanceConfigurations/{maintenanceConfigurationName}
         ```
 
-    - **AKS Managed Auto Upgrade Schedule**
-        ```
-        /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule
-        ```
-
-_Same body for all the 3 resoruces above:_
+_Body for maintenance configuration resource with configurable type:_
 ```json
 {
   "apiVersion": "2025-03-01",
   "type": "Microsoft.ContainerService/maintenanceConfigurations",
   "name": "production-weekends",
   "properties": {
+    "maintenanceConfigurationType": "default", // "default", "aksManagedAutoUpgradeSchedule", or "aksManagedNodeOSUpgradeSchedule"
     "maintenanceWindow": {
       "schedule": {
         "weekly": {
@@ -318,6 +352,36 @@ _Same body for all the 3 resoruces above:_
 }
 ```
 
+**Examples of Multiple Maintenance Configurations:**
+```json
+// Production weekend maintenance for default operations
+{
+  "name": "prod-weekend-default",
+  "properties": {
+    "maintenanceConfigurationType": "default",
+    "maintenanceWindow": { /* schedule */ }
+  }
+}
+
+// Production auto-upgrade schedule
+{
+  "name": "prod-auto-upgrade",
+  "properties": {
+    "maintenanceConfigurationType": "aksManagedAutoUpgradeSchedule", 
+    "maintenanceWindow": { /* schedule */ }
+  }
+}
+
+// Development environment maintenance
+{
+  "name": "dev-environment",
+  "properties": {
+    "maintenanceConfigurationType": "default",
+    "maintenanceWindow": { /* schedule */ }
+  }
+}
+```
+
 **Updated Cluster Resource:**
 ```json
 {
@@ -325,21 +389,30 @@ _Same body for all the 3 resoruces above:_
   "type": "Microsoft.ContainerService/managedClusters",
   "properties": {
     "maintenanceConfigurationIds": [
-        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/default",
-        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule",
-        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule"
+        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/prod-weekend-default",
+        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/prod-node-os-schedule",
+        "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/prod-auto-upgrade"
     ]
   }
 }
 ```
 
-Note: The requirement is that customers specify at least 1 value for the array above. The simple UX with CLI and portal would auto-generate the three. If the customer wants to override and provide their own maintenance configuration, they are allowed to do that. In the process, they can provide one or all three of the maintenance configuration resources. Either ways, they make an explicit choice on the planned maintenance windows this way.
+**Enforcement Logic:**
+- Customers can create maintenance configurations with any name they choose
+- Each maintenance configuration specifies its type via `maintenanceConfigurationType` property
+- Clusters must reference maintenance configurations that match their upgrade channel requirements:
+  - **Baseline clusters** (no upgrade channels): Must reference at least one maintenance configuration with `maintenanceConfigurationType: "default"`
+  - **Auto-upgrade enabled**: Must reference at least one maintenance configuration with `maintenanceConfigurationType: "aksManagedAutoUpgradeSchedule"`
+  - **Node OS/recycle enabled**: Must reference at least one maintenance configuration with `maintenanceConfigurationType: "aksManagedNodeOSUpgradeSchedule"`
+
+Note: Customers can create multiple maintenance configurations of each type within a resource group, enabling flexible scheduling for different cluster groups (e.g., prod-weekend, dev-nightly, staging-monthly).
 
 ### CLI Experience
 
 **Customer who will use simple UX at cluster creation**
 
 ```bash
+# Basic cluster - automatically generates maintenance config with GUID name
 az aks create \
   --resource-group myRG \
   --name myCluster \
@@ -347,13 +420,7 @@ az aks create \
   --day-of-week Saturday
 ```
 
-Above command will generate these maintenance configuration resources with an 8-hour window and utcOffset `+00:00`
-
-```
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/default",
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule", 
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule"
-```
+Above command will automatically generate maintenance configuration resources with GUID names and appropriate `maintenanceConfigurationType` based on the cluster's upgrade channels. AKS will create unique maintenance configurations for this cluster without requiring customer-specified names.
 
 **Customers with existing clusters**
 
@@ -367,12 +434,12 @@ az aks update \
   --day-of-week Saturday
 ```
 
-Above command will generate these maintenance configuration resources with an 8-hour window and utcOffset `+00:00`
+Above command will generate these maintenance configuration resources with GUID-based names, an 8-hour window and utcOffset `+00:00`
 
 ```
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/default",
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule", 
-"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule"
+"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/{guid-1}",
+"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/{guid-2}", 
+"/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/maintenanceConfigurations/{guid-3}"
 ```
 
 ```bash
@@ -385,21 +452,34 @@ az aks upgrade \
 **Customer who wants to granularly set up maintenance configuration per each type**
 
 ```bash
-# Create reusable maintenance configuration
+# Create reusable maintenance configurations with custom names
 az aks maintenance-configuration create \
   --resource-group myRG \
-  --name default \
+  --name "production-weekends" \
+  --type "default" \
   --schedule-type weekly \
   --day-of-week Saturday \
   --start-time 02:00 \
   --duration 4 \
   --time-zone "Pacific Standard Time"
 
-# Create cluster with required maintenance configuration
+az aks maintenance-configuration create \
+  --resource-group myRG \
+  --name "prod-auto-upgrade-schedule" \
+  --type "aksManagedAutoUpgradeSchedule" \
+  --schedule-type weekly \
+  --day-of-week Sunday \
+  --start-time 01:00 \
+  --duration 6 \
+  --time-zone "Pacific Standard Time"
+
+# Create cluster with required maintenance configuration references
 az aks create \
   --resource-group myRG \
   --name myCluster \
-  --maintenance-configuration-ids /subscriptions/.../maintenanceConfigurations/default
+  --maintenance-configuration-ids \
+    "/subscriptions/.../maintenanceConfigurations/production-weekends" \
+    "/subscriptions/.../maintenanceConfigurations/prod-auto-upgrade-schedule"
 
 # List maintenance configurations
 az aks maintenance-configuration list --resource-group myRG
@@ -407,7 +487,7 @@ az aks maintenance-configuration list --resource-group myRG
 # Update maintenance configuration (affects all associated clusters)
 az aks maintenance-configuration update \
   --resource-group myRG \
-  --name default \
+  --name "production-weekends" \
   --start-time 03:00
 ```
 
@@ -415,8 +495,8 @@ Note: The schema and all other fields/values currently supported by planned main
 
 ### Portal Experience
 
-- **Maintenance Configuration Management**: New blade for creating and managing maintenance configurations
-- **Cluster Creation Flow**: Required step to select or create maintenance configuration
+- **Maintenance Configuration Management**: New blade for creating and managing maintenance configurations with custom names
+- **Cluster Creation Flow**: Required step to specify maintenance window (day of week and start time) with auto-generated GUID-based maintenance configurations, or option to select existing maintenance configurations
 - **Multi-Cluster View**: Dashboard showing which clusters use which maintenance configurations
 - **Migration Wizard**: Guided experience for existing clusters to adopt new model
 
@@ -481,12 +561,15 @@ Option A is recommended for enforcing maintenance window references at scale. Az
 | No. | Requirement | Priority  |
 |-----|-----------------------------------------------|----------|
 | 1   | Promote maintenanceConfigurations to top-level Azure resource | High |
-| 2   | Require maintenance configuration for all new AKS cluster creation | High |
-| 3   | Enable multiple clusters to reference same maintenance configuration | High |
-| 4   | Provide migration path for existing clusters | High |
-| 5   | Support RBAC for maintenance configuration resources | Medium |
-| 6   | Enable ARM template and Terraform integration | Medium |
-| 7   | Provide built-in Azure Policy with Modify and Deny effects to enforce maintenance configuration references | High |
+| 2   | Require specific maintenance configurations based on cluster upgrade settings | High |
+| 3   | Enforce aksManagedAutoUpgradeSchedule for clusters with auto-upgrade channel enabled | High |
+| 4   | Enforce aksManagedNodeOSUpgradeSchedule for clusters with node OS channel or node recycle policy | High |
+| 5   | Require default maintenance configuration for baseline clusters (no upgrade channels) | High |
+| 6   | Enable multiple clusters to reference same maintenance configuration | High |
+| 7   | Provide migration path for existing clusters | High |
+| 8   | Support RBAC for maintenance configuration resources | Medium |
+| 9   | Enable ARM template and Terraform integration | Medium |
+| 10  | Provide built-in Azure Policy with Modify and Deny effects to enforce maintenance configuration references | High |
 
 ## Test Requirements
 
