@@ -177,7 +177,7 @@ Customers can debug issues with their credential provider binary by using Azure 
 
 ### Bootstrapping registry and implications
 
-The design choice to leverage a bootstrap Azure Container Registry (ACR) for distributing credential provider binaries follows the established pattern used in [network isolated AKS clusters](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.json#L5134) and provides significant architectural and security benefits:
+The design choice to leverage a bootstrap Azure Container Registry (ACR) for distributing credential provider binaries follows the established pattern used in [network isolated AKS clusters](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.yaml#L5134) and provides significant architectural and security benefits:
 
 - **No Additional Egress Requirements**: By reusing the bootstrap ACR pattern, customers don't need to configure additional egress endpoints or firewall rules beyond what's already required for AKS cluster operations
 - **Private Endpoint Support**: Customers can configure private endpoints for their bootstrap ACR, ensuring that credential provider binary distribution occurs entirely within their private network perimeter
@@ -241,7 +241,7 @@ Users should take and modify this policy definition to their specifications befo
           "properties": {
             "mode": "incremental",
             "template": {
-              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.yaml#",
               "contentVersion": "1.0.0.0",
               "parameters": {
                 "credentialProviderName": {
@@ -294,7 +294,7 @@ The credential provider configuration will be accessible as a sub-resource under
 PUT /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{resourceName}/agentPools/{agentPoolName}/credentialProviders/{credentialProviderName}
 ```
 
-Following the established pattern for agent pool sub-resources in the [Azure REST API specification](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.json#L1055), a proposed API format with example values is below.
+Following the established pattern for agent pool sub-resources in the [Azure REST API specification](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.yaml#L1055), a proposed API format with example values is below.
 
 ```json
 {
@@ -380,7 +380,7 @@ az aks nodepool add \
     --node-count 3 \
     --credential-provider-name aws-ecr \
     --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
-    --credential-provider-config-file ./aws-ecr-config.json
+    --credential-provider-config-file ./aws-ecr-config.yaml
 ```
 
 The passed `--credential-provider-config-file` should [mimic the configuration defined by upstream](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/). An example config to configure one credential provider is given below:
@@ -409,7 +409,7 @@ az aks nodepool update \
     --name myNodePool \
     --credential-provider-name aws-ecr \
     --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
-    --credential-provider-config-file ./aws-ecr-config.json
+    --credential-provider-config-file ./aws-ecr-config.yaml
 ```
 - Recall that updating the credential provider at any time will require a node pool restart
 - If during an update the customer provides a binary/config (config will be determined matching based on what the credential providers `- name` is) that is the same as one already configured on the node pool, the existing configuration will be replaced.
@@ -423,14 +423,14 @@ If a customer wants to configure multiple credential providers on the nodepool, 
      az aks nodepool update \
      ...
          --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
-         --credential-provider-config-file ./aws-ecr-config.json ./ghcr-config.json ./quay-config.json
+         --credential-provider-config-file ./aws-ecr-config.yaml ./ghcr-config.yaml ./quay-config.yaml
      ```
    - If a customer provides an input where either the binary of config field has more arguments than the other, the request should be **rejected**. For example, this would be rejected:
      ```bash
      az aks nodepool update \
      ...
          --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
-         --credential-provider-config-file ./aws-ecr-config.json ./ghcr-config.json 
+         --credential-provider-config-file ./aws-ecr-config.yaml ./ghcr-config.yaml 
      ```
 
    - If a customer provides an input where any arguments (in either the binary of config parameters) is duplicated, the request should be **rejected**. For example, this would also be rejected:
