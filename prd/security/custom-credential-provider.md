@@ -487,7 +487,8 @@ Namely: "Multiple providers may match against a single image, in which case cred
 | 5   | Customers should have access to an easy UX for cluster wide configuration of their credential provider changes | High |
 | 6   | Customers should be able to pass their credential provider binaries through a bootstrap Azure Container Registry (ACR), and AKS should be able to pull those binaries from the bootstrap ACR | High |
 | 7   | Ensure that the error cases documented in this PRD (e.g. repeated binary or config argument passed in the CLI) result in the PUT request being rejected. | High |
-| 8   | Generic logs for a customer's BYO credential provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
+| 8   | An unhealthy credential provider resource at the time of node creation/updates should not block node operations. The cred provider sub-resource should show up as unhealthy.
+| 9   | Generic logs for a customer's BYO credential provider should be passed to Azure Monitor and accessible by the customer for debugging and auditing purposes | Medium |
 
 ## Test Requirements
 
