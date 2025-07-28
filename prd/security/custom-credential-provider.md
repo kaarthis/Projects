@@ -211,78 +211,17 @@ In creating an API, the hope was to be able to introduce some way that would all
 | 2      | Introduce the credential provider sub-resource at the cluster level. This will allow users to apply a configuration across whole clusters. |
 | 3      | Introduce the credential provider as a sub-resource as a sibling of the managedCluster, directly under `Microsoft.ContainerService` to allow customers to reference it from under either a cluster or agent pool resource. |
 
-*Users can create a `deployIfNotExists` [policy](https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deploy-if-not-exists), then create a policy assignment in their node pool to run so that node pools without a credential provider created will have one created.
+Number 1 is the preferred option at the moment, and details underneath expand on it:
 
-Users should take and modify this policy definition to their specifications before creating a policy assignment to define the [scope to apply the policy](https://learn.microsoft.com/en-us/azure/governance/policy/how-to/programmatically-create) (presumably at the cluster level). 
+*Users can take advantage of a provided `deployIfNotExists` [policy definition](https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deploy-if-not-exists), then create a [policy assignment](https://learn.microsoft.com/en-us/azure/governance/policy/tutorials/create-and-manage#assign-a-policy) in their node pool to run so that node pools without a credential provider created will have one created. Users can [programmatically assign their policy defintions](https://learn.microsoft.com/en-us/azure/governance/policy/how-to/programmatically-create) if they so choose to.
 
-```json
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.ContainerService/managedClusters/agentPools"
-        }
-      ]
-    },
-    "then": {
-      "effect": "deployIfNotExists",
-      "details": {
-        "type": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders",
-        "name": "current",
-        "evaluationDelay": "AfterProvisioning",
-        "roleDefinitionIds": [
-          "/subscriptions/{subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/{roleGUID}"
-        ],
-        "existenceCondition": {
-          "field": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders/",
-          "equals": "Enabled"
-        },
-        "deployment": {
-          "properties": {
-            "mode": "incremental",
-            "template": {
-              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.yaml#",
-              "contentVersion": "1.0.0.0",
-              "parameters": {
-                "credentialProviderName": {
-                  "type": "string"
-                },
-                "credentialProviderConfig": {
-                  "type": "string"
-                },
-                "credentialProviderBinDir": {
-                  "type": "string"
-                }
-              },
-              "resources": [
-                {
-                  "type": "Microsoft.ContainerService/managedClusters/agentPools/credentialProviders",
-                  "apiVersion": "2025-05-01", # Example, replace with the release API version
-                  "name": "[concat(parameters('clusterName'), '/', parameters('agentPoolName'), '/', parameters('credentialProviderName'))]",
-                  "properties": {
-                    "enabled": "[parameters('credentialProviderConfig').enabled]",
-                    "config": "[parameters('credentialProviderConfig').config]",
-                    "binDir": "[parameters('credentialProviderBinDir')]"
-                  }
-                }
-              ],
-            },
-            "parameters": {
-              "clusterName": {
-                "value": "[first(split(field('fullName'), '/'))]"
-              },
-              "agentPoolName": {
-                "value": "[field('name')]"
-              },
-              "credentialProviderName": {
-                "value": "default-credential-provider"
-              },
-            }
-          }
-        }
-      }
-    }
-The preference would be to go with **option 1**. This allows the most flexibility (node-pool level) while giving the users the option to propagate their changes across the entirity of a cluster without having to introduce a brand new sub-resource.
+- The provided policy should be able to look through a provided AKS cluster, and see if any node pools within the clusters have a specified credential provider configured or not.
+   - Users should be able to pass `credential-provider-name`, `credential-provider-binary-image`, `credential-provider-config-file`, `resource-group-name`, and `cluster-name` as supported parameters.
+   - As an example, I should be able to utilize the `deployIfNotExists` policy to check out cluster `myAKSCluster` under resource group `myResourceGroup` to see if credential provider `aws-ecr-credential-provider` exists in all the node pools within `myAKSCluster` or not.
+      - If `aws-ecr-credential-provider` is found in a node pool, no action to be taken.
+      - If not found in a node pool, the credential provider should be created based on the given `credential-provider-name`, `credential-provider-binary-image`, and `credential-provider-config-file`.
+
+This allows the most flexibility (keeping the resource at the node-pool level) while giving the users the option to propagate their changes across the entirity of a cluster without having to introduce a brand new sub-resource.
 
 With the preference noted, the API proposal below reflects introducing a sub-resource at the agent pool level. 
 
@@ -290,7 +229,6 @@ With the preference noted, the API proposal below reflects introducing a sub-res
 
 The credential provider configuration will be accessible as a sub-resource under agent pools:
 
-```
 PUT /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{resourceName}/agentPools/{agentPoolName}/credentialProviders/{credentialProviderName}
 ```
 
@@ -368,88 +306,76 @@ Note that, if selected, being able to access/pull the config/binaries (respectiv
 
 Initially, binary pulls from ACR will be treated normally (e.g. no caching, pulled at time of request input). If users observe unbearable latency/issues resulting from the bootstrap ACR pulls, we will iterate and introduce mechanisms to remediate. 
 
-**Creating a node pool**
+**CLI**
 
-Customers that create a new AKS node pool can specify the credential provider configuration using the `az aks nodepool create` command, and add in the `--credential-provider-name`, `--credential-provider-binary-image-tag`, and `--credential-provider-config-file` parameters to set up their credential provider:
+We will be introducing a new group of commands under `az aks credential-provider` that will allow customers to add/delete/update a credential provider.
+
+In all these scenarios, specifying the `resoure-group`, `cluster-name`, and `nodepool-name`/`name` are required. The syntax for these items should remain as is to stay aligned with the `az aks nodepool...` [family of commands](https://learn.microsoft.com/en-us/cli/azure/aks/nodepool?view=azure-cli-latest#az-aks-nodepool-add) for consistency. 
+
+**Adding a credential provider**
+
+Customers can add a credential provider to an AKS node pool via the `az aks credential-provider add` command, and add in the `--credential-provider-name`, `--credential-provider-binary-image`, and `--credential-provider-config-file` parameters to set up their credential provider:
 
 ```bash
-az aks nodepool add \
+az aks credential-provider add \
     --resource-group myResourceGroup \
     --cluster-name myAKSCluster \
     --name myNodePool \
-    --node-count 3 \
-    --credential-provider-name aws-ecr \
-    --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
+    --credential-provider-name aws-ecr-credential-provider \
+    --credential-provider-binary-image "aws-ecr-provider:v1.0.0" \
     --credential-provider-config-file ./aws-ecr-config.yaml
 ```
 
-The passed `--credential-provider-config-file` should [mimic the configuration defined by upstream](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/). An example config to configure one credential provider is given below:
+The passed `--credential-provider-config-file` should [mimic the configuration defined by upstream](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/).
 
-```yaml
-apiVersion: kubelet.config.k8s.io/v1 
-kind: CredentialProviderConfig 
-providers: 
-  - name: ghcr-credential-provider # credential provider 1
-    matchImages: 
-      - "*.ghcr.io/*" 
-    defaultCacheDuration: "10m" 
- ... 
-      optionalServiceAccountAnnotationKeys: 
-      - domain.io/some-optional-annotation 
-      - domain.io/annotation-that-does-not-exist
-**Updating an existing node pool**
-```
+If a customer wants to configure multiple credential providers on the nodepool, they will be expected to run `az aks credential-provider add` multiple times.
 
-Customers can update an existing AKS node pool to add or modify the credential provider configuration using the `az aks nodepool update` command:
+- As an example, if I want to add a credential provider for both my ecr and my ghcr registries on my node pool, I'll need to run `az aks credential-provider add` twice, one time for each registry.
+
+**Updating an existing credential provider**
+
+Customers can update an existing credential provider configuration using the `az aks credential-provider update` command and providing the *updated* binaries and config file they want to use:
 
 ```bash
-az aks nodepool update \
+az aks credential-provider update \
     --resource-group myResourceGroup \
     --cluster-name myAKSCluster \
     --name myNodePool \
-    --credential-provider-name aws-ecr \
-    --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" \
+    --credential-provider-name aws-ecr-credential-provider \
+    --credential-provider-binary-image "aws-ecr-provider:v2.0.0" \
     --credential-provider-config-file ./aws-ecr-config.yaml
 ```
-- Recall that updating the credential provider at any time will require a node pool restart
-- If during an update the customer provides a binary/config (config will be determined matching based on what the credential providers `- name` is) that is the same as one already configured on the node pool, the existing configuration will be replaced.
 
-If a customer wants to configure multiple credential providers on the nodepool, there are a few paths we can allow this:
+- Updating the credential provider at any time will require a node pool restart
+- During an update, the customer should make sure they provide the correct `--credential-provider-name` (which should be that of an existing credential provider already on their node-pool), otherwise the operation will fail as there is no credential provider to update.
 
-- We can have the UX simply require the customer to do an `az aks nodepool update` to an existing cluster. We will make a note of when a credential provider was added to the cluster.
-- We can alternatively have `--credential-provider-binary-image-tag` and `--credential-provider-config-file` accept multiple **space separated** entries.
-   - Each item in the space separated "array" will be index matched to the corresponding index of the other. This will look like:
-     ```bash
-     az aks nodepool update \
-     ...
-         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
-         --credential-provider-config-file ./aws-ecr-config.yaml ./ghcr-config.yaml ./quay-config.yaml
-     ```
-   - If a customer provides an input where either the binary of config field has more arguments than the other, the request should be **rejected**. For example, this would be rejected:
-     ```bash
-     az aks nodepool update \
-     ...
-         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "ghcr-provodier:latest" "quay.io:v1.0.1" \
-         --credential-provider-config-file ./aws-ecr-config.yaml ./ghcr-config.yaml 
-     ```
+**Deleting an existing credential provider** 
 
-   - If a customer provides an input where any arguments (in either the binary of config parameters) is duplicated, the request should be **rejected**. For example, this would also be rejected:
-     ```bash
-     az aks nodepool update \
-     ...
-         --credential-provider-binary-image-tag "aws-ecr-provider:v1.0.0" "aws-ecr-provider:v1.0.0" \
-     ```
+Customers that want to delete a credential provider config from their node pool can run the `az aks credential-provider delete` command:
 
-Once the customer hits the limit of three credential providers in the nodepool, if they try again to add another credential provider, the oldest configured credential provider will be replaced with the newest one (with this cycle repeating; as the customer adds more new cred providers, the oldest of the 3 will always be replaced by the newest one being added). 
-- If they're adding more than one registry at a time (assuming we go with the second proposal), the oldest/newest relationship above will still be maintained, with the nuance being that left most argument/config/binary will be treated as oldest, becoming "newer" as you move to the right.
+```bash
+az aks credential-provider delete \
+    --resource-group myResourceGroup \
+    --cluster-name myAKSCluster \
+    --name myNodePool \
+    --credential-provider-name aws-ecr-credential-provider \
+```
 
-To illustrate this point: 
-1. Let's assume I have `az aks nodepool add` a cluster with `aws-cred-provider` already configured on there.
-2. I now update the nodepool via `az aks nodepool update` and add in `ghcr-cred-provider`. The current configuration on the nodepool would look like (super simplified): `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`.
-3. Now, suddenly I `az aks nodepool update` again, this time I pass `--credential-provider-binary-image-tag "quay-provider:v1.0.0" "jfrog-provodier:latest"` (config CLI won't be included, but assume that's passed and configured correctly).
-   - The logic would be `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`. `newProviders: [oldest] quay-provider, jfrog-provider [newest]`
-   - The end result on the cluster would be `existingProviders: [oldest] ghcr-cred-provider, quay-provider, jfrog-provider [newest]`, with `aws-cred-provider` being overridden. 
+- Deleting a credential provider at any time will require a node pool restart
+- When deleting a credential provider, the customer should ensure that they provide the correct `--credential-provider-name` for an existing credential provider on their node pool. If an invalid name is given (e.g. wrong name, cred-provider doesn't exist), then the operation will fail.
+- AKS will take care on the backend to remove all hydrated config files/binaries that were set up.
 
+**Listing credential providers**
+
+A command should also be added to allow a user to quickly query their node pool for the existing credential provider resource(s) on it currently, with the output being the list of existing `credential-provider-name` in the specified node pool.
+
+```bash
+az aks credential-provider list \
+    --resource-group myResourceGroup \
+    --cluster-name myAKSCluster \
+    --name myNodePool \
+```
+     
 **matchImages resolution**
 
 In the event that >1 provider is configured with the same value in their `matchImage` field (e.g. both my `aws-ecr-provider` and my `ghcr-provider` have `*.ghcr.io/*`, the [upstream behavior](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/#configure-a-kubelet-credential-provider) will be invoked.
