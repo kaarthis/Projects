@@ -296,7 +296,7 @@ PUT /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers
 
 Following the established pattern for agent pool sub-resources in the [Azure REST API specification](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.yaml#L1055), a proposed API format with example values is below.
 
-```json
+```yaml
 {
     "agentPoolProfiles": [
         {
@@ -445,7 +445,7 @@ Once the customer hits the limit of three credential providers in the nodepool, 
 
 To illustrate this point: 
 1. Let's assume I have `az aks nodepool add` a cluster with `aws-cred-provider` already configured on there.
-2. I now `az aks nodepool update` in `ghcr-cred-provider`. The current configuration on the nodepool would look like (super simplified): `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`.
+2. I now update the nodepool via `az aks nodepool update` and add in `ghcr-cred-provider`. The current configuration on the nodepool would look like (super simplified): `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`.
 3. Now, suddenly I `az aks nodepool update` again, this time I pass `--credential-provider-binary-image-tag "quay-provider:v1.0.0" "jfrog-provodier:latest"` (config CLI won't be included, but assume that's passed and configured correctly).
    - The logic would be `existingProviders: [oldest] aws-cred-provider, ghcr-cred-provider [newest]`. `newProviders: [oldest] quay-provider, jfrog-provider [newest]`
    - The end result on the cluster would be `existingProviders: [oldest] ghcr-cred-provider, quay-provider, jfrog-provider [newest]`, with `aws-cred-provider` being overridden. 
