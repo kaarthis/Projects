@@ -28,7 +28,7 @@ AKS customers frequently need to pull container images from custom container reg
 Currently, AKS only provides native authentication integration with Azure Container Registry (ACR). For custom registries, customers must implement workarounds that are complex, insecure, and difficult to maintain:
 
 1. **Manual Secret Management**: Creating and managing Kubernetes secrets with registry credentials, which requires manual rotation and poses security risks.
-2. **Node-Level Configuration**: Manually configuring containerd or other components on each node, which is not supported and breaks with node updates. Some customers will not have permissions on NRG lockdown AKS clusters to be able to make these changes.
+2. **Node-Level Configuration**: Manually configuring containerd or other components on each node, which is not supported and breaks with node updates. Some customers will not have permissions on [node resource group (NRG) lockdown](https://learn.microsoft.com/en-us/azure/aks/node-resource-group-lockdown) AKS clusters to be able to make these changes.
 3. **DaemonSet based configuration**: Deploying a managed DaemonSet to each node in the cluster that installs and configures kubelet credential provider binaries. DaemonSets may fail to deploy correctly and upgrades or node scaling events often break the configuration, leading to unpredictable authentication failures and increased support burden.
 
 These workarounds result in:
