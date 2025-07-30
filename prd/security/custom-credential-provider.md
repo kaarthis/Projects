@@ -358,6 +358,7 @@ az aks credential-provider delete \
     --resource-group myResourceGroup \
     --cluster-name myAKSCluster \
     --name myNodePool \
+    --credential-provider-name aws-ecr-credential-provider
     --credential-provider-name aws-ecr-credential-provider \
 ```
 
