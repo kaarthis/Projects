@@ -398,7 +398,7 @@ Namely: "Multiple providers may match against a single image, in which case cred
 
 | No. | Outcome | Measure | Target | Priority  |
 |-----|---------|---------|---------|--------|
-| 1   | Adoption of custom credential providers | % of customers using native credential providers vs existing workloads | 50% adoption for customers using non-ACR registries within 12 months | High |
+| 1   | Adoption of custom credential providers | In the trailing 30 days (as of 7/31/2025), there were 48,733,168 clusters that had images from non-Microsoft registries. | 50% adoption from customers using non-ACR/MAR registries within 12 months | High |
 | 3   | Reduce support escalations | Number of support cases related to registry authentication | Reduce by 70% | High |
 
 # Requirements 
