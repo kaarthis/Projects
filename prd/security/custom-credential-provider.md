@@ -230,7 +230,7 @@ With the preference noted, the API proposal below reflects introducing a sub-res
 The credential provider configuration will be accessible as a sub-resource under agent pools:
 
 PUT /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{resourceName}/agentPools/{agentPoolName}/credentialProviders/{credentialProviderName}
-```
+
 
 Following the established pattern for agent pool sub-resources in the [Azure REST API specification](https://github.com/Azure/azure-rest-api-specs/blob/ff00d10875362d73dfbfadc1ad7c760486187dca/specification/containerservice/resource-manager/Microsoft.ContainerService/aks/stable/2025-02-01/managedClusters.yaml#L1055), a proposed API format with example values is below.
 
