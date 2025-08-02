@@ -162,28 +162,31 @@ Following the established pattern for agent pool sub-resources in the [Azure RES
 
 ```yaml
 {
-  "properties": {
-    "customRegistryConfig": {
-      "customRegistries": [
-        {
-          "server": "*.quay.io/*",
-          "mirrors": [
+  "agentPoolProfiles": [
+    {
+      "properties": {
+        "customRegistryConfig": {
+          "customRegistries": [
             {
-              "endpoint": "*.dkr.ecr.*.amazonaws.com",
-              "capabilities": ["pull", "push", "resolve"]
-            },
-            {
-              "endpoint": "artifactory.*.com/artifactory/*",
-              "capabilities": ["pull"]
+              "server": "*.quay.io/*",
+              "mirrors": [
+                {
+                  "endpoint": "*.dkr.ecr.*.amazonaws.com",
+                  "capabilities": ["pull", "push", "resolve"]
+                },
+                {
+                  "endpoint": "artifactory.*.com/artifactory/*",
+                  "capabilities": ["pull"]
+                }
+              ],
+              "fallback": "server"
             }
           ],
-          "fallback": "server"
+          "timeout": "10m"
         }
-      ],
-      "timeout": "10m"
+      }
     }
-  }
-}
+  ]
 ```
 In the spirit of keeping with the upstream convention, some of the properties retain names that reflect what they're called [upstream](https://github.com/containerd/containerd/blob/0def98e462706286e6eaeff4a90be22fda75e761/docs/hosts.md#registry-configuration---examples).
 
