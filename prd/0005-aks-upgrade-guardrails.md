@@ -30,7 +30,7 @@ Examples observed:
 - Declare SLO guardrails via existing monitoring investments:
   - Azure Monitor alert rules (resource IDs)
   - Prometheus (Managed Prometheus or external) via rule names or PromQL
-- Support preflight, canary, and post‑upgrade soak windows
+- Support preflight (checks before upgrade), canary (limited early upgrade phase—upgrade a subset of nodes/pods to catch issues before full rollout), and post-upgrade soak windows (monitoring after upgrade to detect delayed problems)
 - On breach: pause or abort; optionally trigger agent pool rollback when available
 - Log gating decisions/breaches for audit and diagnostics
 - Azure Policy enablement to require guardrails in production
@@ -41,7 +41,7 @@ Examples observed:
 - Guard decision loop P95 ≤ 2 minutes
 - Security: https endpoints only; domain allowlist for external Prom; MSI for Azure Monitor; secrets via Key Vault refs
 - Reliability: guard evaluation availability ≥ 99.9% during upgrades
-- Telemetry & Cost: adoption, latency, breach precision/false‑positive rate; publish per‑upgrade evaluator cost model (API calls/data scan, est. $/upgrade) for capacity planning
+- Telemetry: adoption, latency, breach precision/false‑positive rate
 
 ### Non-Goals
 - No full blue/green traffic orchestration
@@ -58,10 +58,16 @@ Examples observed:
 
 ## Customers and Business Impact
 
+Current Customer Impact (baseline):Mar - July 2025
+| Issue Type                    | Number of Cases |
+|-------------------------------|-----------------|
+| Post-upgrade workload break   | 11              |
+| Pods crashing or not ready    | 66              |
+| Performance degradation       | 4               |
+| Latency regressions           | 32              |
+| Delayed memory spikes         | 12              |
 
-
-Current Customer Impact (baseline):
-- High number of upgrade-related support cases tied to workload breakage or post-upgrade latency/performance regressions (issues surface after completion rather than during).
+In the last 4 months (March–July), there were 1,050 upgrade-related support cases. Of these, a significant portion were tied to workload breakage or post-upgrade latency/performance regressions, with issues often surfacing after upgrade completion rather than during the process.
 - Heavy operator burden maintaining bespoke blue/green flows and manual canary gates; inconsistent coverage across teams.
 
 Business Impact / OKR Alignment:
@@ -117,11 +123,31 @@ Rationale for 4: Adoption reality (self‑hosted Prom widely used by large enter
 
 Breaking changes: None (opt‑in).  
 Go‑to‑market: Preview (agent pools), iterate; GA with Azure Policy + Managed Prometheus first‑class.  
+
 Pricing: Included; standard Azure Monitor/Prometheus costs apply.
 
 False positives/noise mitigation: consecutive breaches, warm‑up suppression, debounce windows, cooldowns, and customer‑selected signals only.
 
 Security posture: External endpoints require https + allowlisted domains; auth via Key Vault or workload identity; Azure Monitor via MSI.
+
+## Observability & Troubleshooting Experience
+
+### Failure Visibility & Diagnostics
+
+- **Manual Upgrades:**
+  - Failures due to guardrail breaches are shown in CLI/Portal with clear error messages: which SLO(s) breached, metric, threshold, observed value, and evaluation window.
+  - Diagnostic logs and gating decision summaries are available via `az aks upgrade-guards show` and in the Portal diagnostics blade.
+  - Users can review the decision timeline, including timestamps, signals, and breach rationale.
+  - Retry: after fixing the root cause (e.g., alert resolved), users can re-initiate the upgrade from CLI/Portal.
+
+- **Auto-Upgrades:**
+  - Failures are logged in the cluster's activity log and surfaced in Azure Monitor, Comms manager (event details, breach context).
+  - Notifications can be sent via Action Groups, comms manager if configured.
+  - Retry: auto-upgrades do not auto-retry after a breach; customers must manually resume or re-trigger after review.
+
+- **Level of Detail:**
+  - Both manual and auto-upgrades provide: breached SLO name, metric, threshold, observed value, evaluation window, and recommended next steps.
+  - Portal and CLI expose a diagnostics panel with evaluation history and links to alert rules.
 
 ## User Experience 
 
@@ -173,13 +199,52 @@ Delta on Managed Cluster/Agent Pool upgrade policy (abbreviated):
 - prometheus.mode: managed or external source of rules.
 - prometheus.ruleNames: Named alert/rules evaluated during upgrade (Prometheus).
 
+
 Validation (musts):
 - If enabled, at least one source (azureMonitor or prometheus) provided
 - Control plane: onBreach → pause only; Agent pool: optional rollback
 - External Prom: https + allowlisted domain; auth reference must resolve
 - Agent pool rollback reverts to prior pool when supported
 
+
+### Use Case Scenarios
+
+#### 1. Managed Alert Rules (Azure Monitor)
+**Scenario:** Customer wants to gate upgrades using existing Azure Monitor alert rules for latency and error rate.
+
+**Steps:**
+1. Create or identify Azure Monitor alert rules for the target cluster (e.g., latency, error rate).
+2. Enable upgrade guardrails via CLI/Portal, referencing the alert rule IDs:
+   ```sh
+   az aks upgrade -g myRG -n myCluster --kubernetes-version X --enable-upgrade-guards \
+     --guards-azmon-scope <clusterResourceId> \
+     --guards-azmon-alert-ids <latencyAlertId> <errorRateAlertId> \
+     --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2
+   ```
+3. During upgrade, AKS evaluates the referenced alert rules in preflight/canary/soak windows.
+   - **Example:** During the canary phase, the latency alert breaches (e.g., p95 latency spikes above threshold). AKS automatically pauses the upgrade, surfaces a diagnostic message in CLI/Portal with breach details, and blocks further rollout.
+4. User reviews breach details in CLI/Portal, resolves the latency issue (e.g., fixes config or code), and retries the upgrade when ready.
+
+#### 2. External Prometheus (Self-Hosted Endpoint)
+**Scenario:** Customer uses a self-hosted Prometheus instance (external to AKS) to define SLO alerts.
+
+**Steps:**
+1. Ensure the Prometheus endpoint is reachable via HTTPS and allowlisted; configure authentication (e.g., Key Vault secret).
+2. Define alerting rules in Prometheus (e.g., HighErrorRate, P95LatencySpike).
+3. Enable upgrade guardrails referencing the external Prom endpoint and rule names:
+   ```sh
+   az aks upgrade -g myRG -n myCluster --kubernetes-version X --enable-upgrade-guards \
+     --guards-prom-mode external --guards-prom-endpoint https://prom.example.com \
+     --guards-prom-auth-keyvault <kvSecretRef> \
+     --guards-prom-rule-names HighErrorRate P95LatencySpike \
+     --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2
+   ```
+4. During upgrade, AKS queries the external Prometheus endpoint for rule status.
+   - **Example:** In the post-upgrade soak window, the HighErrorRate rule fires (error rate exceeds SLO). AKS pauses or aborts the upgrade, provides diagnostics in CLI/Portal, and prevents completion until the issue is addressed.
+5. User reviews breach details, resolves the error rate in Prometheus, and retries upgrade as needed.
+
 ### CLI Experience
+  - On failure, CLI output includes a summary of breached guardrails, breach details, and a pointer to diagnostics (`az aks upgrade-guards show`).
 - Enable with Azure Monitor + Prometheus:
   - `az aks upgrade -g rg -n c --kubernetes-version X --enable-upgrade-guards \
      --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2 \
@@ -190,6 +255,7 @@ Validation (musts):
 - Inspect last decision/breach: `az aks upgrade-guards show -g rg -n c`
 
 ### Portal Experience
+  - On failure, the upgrade wizard displays a clear error banner with breach details and a link to the diagnostics blade for full context.
 - Upgrade wizard: “SLO guardrails” toggle
 - Select Azure Monitor alert rules and/or Prometheus rules
 - Configure evaluation windows and breach action; optional agent pool rollback
@@ -221,6 +287,7 @@ Validation (musts):
 
 # Requirements 
 
+
 ## Functional Requirements 
 
 | No. | Requirement | Priority |
@@ -234,6 +301,15 @@ Validation (musts):
 | 7 | Policy controls (require/deny/audit/deployIfNotExists) | Medium |
 | 8 | Safety levers: warm‑up suppression, debounce, cooldown | Medium |
 | 9 | External endpoint security: TLS, domain allowlist, Key Vault auth | High |
+
+## Observability & Troubleshooting Requirements
+| No. | Requirement | Priority |
+|-----|-------------|----------|
+| 1 | Expose detailed breach diagnostics in CLI/Portal | High |
+| 2 | Log all gating decisions and failures for audit | High |
+| 3 | Support manual retry after breach resolution | High |
+| 4 | Surface auto-upgrade failures in activity log, Comms manager and Azure Monitor | High |
+| 5 | Provide actionable error messages and next steps | High |
 
 ## Test Requirements 
 
