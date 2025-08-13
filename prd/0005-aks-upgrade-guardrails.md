@@ -198,42 +198,32 @@ Delta on Managed Cluster/Agent Pool upgrade policy (abbreviated):
 - AKS Responsibilities: Poll sources during preflight/canary/soak, apply consecutive breach logic, decide pause/abort/rollback, emit diagnostics. Never mutates customer rules or thresholds.
 - AKS Non‑Responsibilities: Creating/editing alert rules, changing thresholds, parsing raw PromQL for external endpoints beyond rule status, auto‑remediation.
 
-**Property Explanations (concise)**
-- (Required) healthGuards.enabled: Master switch.
-- (Required) evaluation.preflightMinutes: Warm‑up/validation before any drain; avoids cold‑start noise. Upgrade pauses immediately if any required alert is already firing at preflight start.
-- (Required) evaluation.canaryMinutes: Limited drain/traffic phase to catch early regressions.
-- (Required) evaluation.soakMinutes: Post‑upgrade observation window to detect delayed/cascading issues.
-- (Optional) evaluation.consecutiveBreachesRequired: Debounce against transient spikes (default 2 if omitted – to define in spec).
-- (Required) actions.onBreach: pause | abort decision (default pause if omitted).
-- (Optional) actions.onBreachAgentPool.rollbackEnabled: Blue/Green rollback mapping when supported.
-- (Conditional Required) azureMonitor.alertRuleIds: ≥1 IDs if using Azure Monitor source.
-- (Conditional Required) prometheus.mode: managed | external when Prometheus rules used.
-- (Conditional Required) prometheus.ruleNames: ≥1 rule if prometheus.mode set.
-- (Conditional Required) prometheus.endpoint: Required when mode=external.
-- (Conditional Required) prometheus.auth.keyVaultSecretRef: If external endpoint requires auth.
+### Health Guard Properties (Merged Reference)
 
-### Defaults (P0) – concise
-| Property | Type | Allowed / Range | Default (if omitted) | Required When | Mutable After Create? |
-|----------|------|-----------------|----------------------|---------------|-----------------------|
-| healthGuards.enabled | bool | true/false | false | Always (customer sets) | Yes |
-| evaluation.preflightMinutes | int | 0–60 | 10 (if enabled & omitted) | enabled=true | Yes (not mid-phase) |
-| evaluation.canaryMinutes | int | 5–180 | 20 (if omitted) | enabled=true | Yes (only before canary start) |
-| evaluation.soakMinutes | int | 10–360 | 60 (if omitted) | enabled=true | Yes (only before soak start) |
-| evaluation.consecutiveBreachesRequired | int | 1–5 | 2 | enabled=true | Yes |
-| actions.onBreach | enum | pause | abort | pause | enabled=true | No (per-upgrade immutable) |
-| actions.onBreachAgentPool.rollbackEnabled | bool | true/false | false | Blue/Green scenario | No (for running upgrade) |
-| azureMonitor.alertRuleIds[] | array<string> | 1–32 IDs | – (no default) | Using Azure Monitor source | Yes |
-| prometheus.mode | enum | managed | external | – (unset) | Using Prometheus source | Yes |
-| prometheus.ruleNames[] | array<string> | 1–32 names | – (no default) | prometheus.mode set | Yes |
-| prometheus.endpoint | string (URL) | https scheme, <=2083 chars | – | prometheus.mode=external | Yes |
-| prometheus.auth.keyVaultSecretRef | string | Valid KV secret ID | – | External endpoint requires auth | Yes |
-| rollbackEnabled (agent pool) | bool | true/false | false | Blue/Green scenario | No (per-upgrade) |
+| Property | Description (Concise) | Type | Allowed / Range | Default (if omitted) | Required When | Mutable After Create / During Upgrade |
+|----------|-----------------------|------|-----------------|----------------------|---------------|---------------------------------------|
+| `healthGuards.enabled` | Master switch for SLO guardrails. | bool | true / false | false | Always (customer decides) | Yes (any time) |
+| `evaluation.preflightMinutes` | Pre-upgrade warm-up / validation window; upgrade pauses immediately if a required alert is already firing at start. | int | 0–60 | 10 (if enabled) | `enabled=true` | Yes (until preflight starts) |
+| `evaluation.canaryMinutes` | Limited early (partial) upgrade window to catch initial regressions. | int | 5–180 | 20 | `enabled=true` | Yes (only before canary phase begins) |
+| `evaluation.soakMinutes` | Post-upgrade observation window for delayed / cascading issues. | int | 10–360 | 60 | `enabled=true` | Yes (only before soak phase begins) |
+| `evaluation.consecutiveBreachesRequired` | Debounce: number of consecutive evaluations required to treat a firing signal as a breach. | int | 1–5 | 2 | `enabled=true` | Yes (any time; affects future decisions) |
+| `actions.onBreach` | Action when breach threshold met: pause (halt & await user) or abort (terminate upgrade). Control plane forced to pause-only. | enum | `pause` \| `abort` | `pause` | `enabled=true` | No (immutable per in-progress upgrade) |
+| `actions.onBreachAgentPool.rollbackEnabled` | Allows Blue/Green agent pool rollback on breach (when supported). | bool | true / false | false | Blue/Green scenario + agent pool | No (immutable per in-progress upgrade) |
+| `azureMonitor.alertRuleIds[]` | Azure Monitor alert rule resource IDs (metricAlerts, scheduledQueryRules, smartDetectorAlertRules) used as SLO guardrails. | array<string> | 1–32 IDs | – | Using Azure Monitor source OR no other source present (need ≥1 overall) | Yes (cannot remove IDs currently evaluating mid-phase) |
+| `prometheus.mode` | Prometheus source type. | enum | `managed` \| `external` | – | Using Prometheus rules | Yes |
+| `prometheus.ruleNames[]` | Prometheus alert (rule) names to enforce. | array<string> | 1–32 names | – | `prometheus.mode` set | Yes (cannot remove names actively breaching mid-phase) |
+| `prometheus.endpoint` | External Prometheus base URL (expects `/api/v1/alerts`). | string (URL) | HTTPS; length ≤2083 | – | `prometheus.mode=external` | Yes |
+| `prometheus.auth.keyVaultSecretRef` | Key Vault secret ID containing auth token / credential for external endpoint. | string | Valid Key Vault secret resource ID | – | External endpoint requires auth | Yes (rotation supported) |
+| `rollbackEnabled` (agent pool alias of `actions.onBreachAgentPool.rollbackEnabled`) | Convenience alias surfaced in some clients for rollback toggle. | bool | true / false | false | Blue/Green agent pool scenario | No (per in-progress upgrade) |
 
 Notes:
-- Mutation constraints: values cannot be changed for a phase already in progress (e.g., cannot reduce canaryMinutes after canary started). Service rejects with 409.
-- Arrays max (32) sized to bound evaluation latency; larger sets require future quota increase.
-- Omitted required fields result in 400 (ValidationError) before operation starts.
-- Fail-closed: source unreachable > retry budget → pause (state reason=SourceUnreachable).
+- At least one signal source required: (`azureMonitor.alertRuleIds` OR `prometheus.ruleNames`) when `enabled=true`.
+- Mutation guards: Values cannot be shortened/changed for a phase already underway (service returns 409).
+- Fail-closed behavior: Source unreachable beyond retry budget → upgrade pauses (reason = SourceUnreachable).
+- Control plane upgrades: `actions.onBreach` treated as `pause` regardless of supplied `abort`.
+- Debounce logic: A breach is triggered only after `consecutiveBreachesRequired` sequential evaluations report firing.
+- Security (external Prometheus): Must be HTTPS + allowlisted domain; auth secret resolved via Key Vault (no inline secrets).
+
 
 **Validation (musts)** (unchanged summary)
 - If enabled: at least one source (azureMonitor.alertRuleIds OR prometheus.ruleNames) present.
