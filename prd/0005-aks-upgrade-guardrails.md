@@ -43,11 +43,11 @@ Examples observed:
 - Telemetry: adoption, latency, breach precision/false‑positive rate
 
 ### Non-Goals
-- No fleet-wide or multi-cluster orchestration; 
+- Signal sources: v1 supports Azure Managed Prometheus only; Azure Monitor alert rules and self‑hosted/external Prometheus are out of scope and deferred to a later phase
+- No fleet-wide or multi-cluster orchestration
 - No full blue/green traffic orchestration
 - No control plane rollback (unsupported); agent pool rollback only when available
 - No auto‑remediation of applications
-- Initial scope does not include Azure Monitor alert rules or self‑hosted/external Prometheus endpoints (can be added later)
 
 ## Narrative/Personas
 
@@ -171,6 +171,13 @@ Operations (ARM)
 - GET managedClusters/{clusterName}/upgradeGuards/default/evaluations — list evaluations for recent upgrade runs
 - GET managedClusters/{clusterName}/upgradeGuards/default/evaluations/{upgradeRunId} — get one evaluation timeline
 (Same shapes apply for the agent pool child resource path.)
+
+Prometheus linkage and ID requirements
+- `prometheus.ruleGroupIds` must be full ARM resource IDs of `Microsoft.AlertsManagement/prometheusRuleGroups`, for example: `/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}`. Short names or partial IDs are not accepted.
+- Optional `prometheus.ruleNames[]` acts as an allowlist filter within the provided rule groups. If omitted, all alerting rules in those groups are eligible. Matching is by exact rule name.
+- On PUT, AKS validates that each rule group exists and is readable with the caller’s/cluster’s identity. If not, the request fails with clear diagnostics.
+- Multiple rule groups are supported (1–16). Duplicates are ignored.
+- Policy can audit/require IDs via alias: `Microsoft.ContainerService/managedClusters/upgradeGuards.prometheus.ruleGroupIds[*]`.
 
 Example: PUT (create/update) child resource
 ```http
