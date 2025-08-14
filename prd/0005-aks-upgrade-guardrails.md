@@ -7,12 +7,12 @@ authors: [kaarthis]
 stakeholders: []
 approved-by: []
 status: Draft
-last-updated: 2025-08-08
+last-updated: 2025-08-13
 ---
 
 # Overview
 
-Before this feature, AKS customers had to hand‑craft blue/green flows and stitch alerts to decide whether to proceed or stop upgrades. Now, AKS customers can declare application SLO guardrails (Azure Monitor alerts and Prometheus rules) that the upgrade process enforces with canary and soak checks to automatically pause or abort on anomalies.
+Before this feature, AKS customers had to hand‑craft blue/green flows and stitch alerts to decide whether to proceed or stop upgrades. Now, AKS customers can declare application SLO guardrails using Azure Managed Prometheus rule groups that the upgrade process enforces with canary and soak checks to automatically pause or abort on anomalies.
 
 ## Problem Statement / Motivation
 
@@ -28,8 +28,7 @@ Examples observed:
 
 ### Functional Goals
 - Declare SLO guardrails via existing monitoring investments:
-  - Azure Monitor alert rules (resource IDs)
-  - Prometheus (Managed Prometheus or external) via rule names or PromQL
+  - Prometheus (Azure Managed Prometheus rule groups) via rule names
 - Support preflight (checks before upgrade), canary (limited early upgrade phase—upgrade a subset of nodes/pods to catch issues before full rollout), and post-upgrade soak windows (monitoring after upgrade to detect delayed problems)
 - On breach: pause or abort; optionally trigger agent pool rollback when available
 - Log gating decisions/breaches for audit and diagnostics
@@ -39,22 +38,23 @@ Examples observed:
 
 ### Non-Functional Goals
 - Guard decision loop P95 ≤ 2 minutes
-- Security: https endpoints only; domain allowlist for external Prom; MSI for Azure Monitor; secrets via Key Vault refs
+- Security: platform-native integration with Azure Monitor Managed Prometheus; no customer secrets or external endpoints required
 - Reliability: guard evaluation availability ≥ 99.9% during upgrades
 - Telemetry: adoption, latency, breach precision/false‑positive rate
 
 ### Non-Goals
+- No fleet-wide or multi-cluster orchestration; 
 - No full blue/green traffic orchestration
 - No control plane rollback (unsupported); agent pool rollback only when available
 - No auto‑remediation of applications
-- Does not replace AKS Blue/Green nodepool upgrades; complements them with SLO gating
+- Initial scope does not include Azure Monitor alert rules or self‑hosted/external Prometheus endpoints (can be added later)
 
 ## Narrative/Personas
 
 | Persona | Required permissions | User Journey and Success Criteria |
 |---------|----------------------|-----------------------------------|
-| Developer / Cluster Owner | Microsoft.ContainerService/managedClusters/write; Microsoft.AlertsManagement/alerts/read | Reference existing alerts or Prom rules; upgrade pauses/aborts on breach. Success: No SLO breach escapes an upgrade. |
-| Platform Operator | Microsoft.ContainerService/managedClusters/*; Microsoft.AlertsManagement/alerts/*; Microsoft.Insights/* | Define org defaults; enforce via policy; monitor compliance. Success: Safe upgrades at scale without bespoke pipelines. |
+| Developer / Cluster Owner | Microsoft.ContainerService/managedClusters/write; Microsoft.AlertsManagement/prometheusRuleGroups/read | Reference existing Managed Prometheus alert rules; upgrade pauses/aborts on breach. Success: No SLO breach escapes an upgrade. |
+| Platform Operator | Microsoft.ContainerService/managedClusters/*; Microsoft.AlertsManagement/prometheusRuleGroups/* | Define org defaults; enforce via policy; monitor compliance. Success: Safe upgrades at scale without bespoke pipelines. |
 
 ## Customers and Business Impact
 
@@ -86,7 +86,7 @@ Business Impact / OKR Alignment:
 
 Announcing SLO‑Gated, Metric‑Aware Upgrades for AKS
 
-AKS upgrades can now honor your application SLOs. Reference Azure Monitor alert rules or Prometheus rules, configure canary/soak windows, and AKS will pause or abort upgrades on anomalies—no bespoke pipelines required. Public preview for agent pool upgrades this release; GA to follow after feedback.
+AKS upgrades can now honor your application SLOs. Reference Azure Managed Prometheus rule names, configure canary/soak windows, and AKS will pause or abort upgrades on anomalies—no bespoke pipelines required. Public preview for agent pool upgrades this release; GA to follow after feedback.
 
 **Addressing Key Challenges**
 - Nuanced regressions (latency, error rate, delayed OOMs) missed by readiness checks
@@ -94,13 +94,13 @@ AKS upgrades can now honor your application SLOs. Reference Azure Monitor alert 
 - Noise/false positives when alerts aren’t evaluated with warm‑up/debounce logic
 
 **Functionality and Usage**
-- Configure guardrails via API/CLI/Portal using existing Azure Monitor alerts and/or Prometheus rules
+- Configure guardrails via API/CLI/Portal using existing Azure Managed Prometheus rule groups
 - Evaluate in preflight, canary, and post‑upgrade soak windows; on breach → pause/abort; optional agent pool rollback
 - Works with AKS Blue/Green nodepool upgrades: guardrails gate canary and pre‑cutover phases
 
 **Availability**
 - Public Preview: agent pool upgrades (VMSS and VM node pools); control plane uses pause‑only (no rollback)
-- GA target: adds built‑in policies and Managed Prometheus first‑class integration
+- GA target: adds built‑in policies and deeper Managed Prometheus integration
 - Blue/Green nodepool upgrades available later this year; guardrails complement, not replace
 
 ## Proposal
@@ -108,27 +108,27 @@ AKS upgrades can now honor your application SLOs. Reference Azure Monitor alert 
 Options considered (concise):
 1) Status quo (manual). No change; risk persists.  
 2) Portal‑only checks. UI convenience, no IaC/policy.  
-3) Native guardrails (Managed Prometheus only). Simplifies integration but excludes self‑hosted/external alert sources.  
-4) Native guardrails (source‑agnostic, recommended). Supports Azure Managed Prometheus, self‑hosted Prometheus, and external providers.
+3) Native guardrails (Managed Prometheus first; expand to Azure Monitor/self‑hosted later).  
+4) Native guardrails (source‑agnostic from day one).
 
 **Options and Trade‑offs (concise)**
 | Option | Pros | Cons | Decision |
 |-------|------|------|----------|
 | 1. Status quo | Zero engineering | Incidents persist; no governance | Rejected |
 | 2. Portal‑only | Faster UX uplift | No IaC/policy; not automatable | Rejected |
-| 3. Managed‑only guardrails | Simpler integration; tighter UX | Excludes ~14–15% self‑hosted Prom users; large enterprises depend on self‑hosted; Managed Prom adoption is low (≈2%) | Rejected |
-| 4. Guardrails (source‑agnostic) | Meets customers where they are (Managed + self‑hosted + external); uses existing alerts; IaC + policy; composable | Broader integration surface | Recommended |
+| 3. Managed‑first guardrails | Tighter integration, no external endpoints, leverages existing investments; Azure Managed Prometheus present on ~48% of clusters today → meaningful coverage from day one | Leaves Azure Monitor alerts and self‑hosted Prometheus for a later phase | Recommended |
+| 4. Guardrails (source‑agnostic) | Meets all users (Managed + self‑hosted + external) | Broader integration surface slows delivery; more security surface | Defer |
 
-Rationale for 4: Adoption reality (self‑hosted Prom widely used by large enterprises; Managed Prom lukewarm). Source‑agnostic design minimizes friction, leverages existing alerts, integrates with the upgrade lifecycle, and scales with policy without forcing stack migration.
+Rationale for 3: Managed Prometheus adoption is material (~48% of clusters), providing broad immediate impact with lowest integration and security complexity. We can expand to Azure Monitor alerts and self‑hosted Prometheus endpoints incrementally without blocking the core value.
 
 Breaking changes: None (opt‑in).  
-Go‑to‑market: Preview (agent pools), iterate; GA with Azure Policy + Managed Prometheus first‑class.  
+Go‑to‑market: Preview (agent pools), iterate; GA with Azure Policy + deeper Managed Prometheus integration.  
 
 Pricing: Included; standard Azure Monitor/Prometheus costs apply.
 
 False positives/noise mitigation: consecutive breaches, warm‑up suppression, debounce windows, cooldowns, and customer‑selected signals only.
 
-Security posture: External endpoints require https + allowlisted domains; auth via Key Vault or workload identity; Azure Monitor via MSI.
+Security posture: Platform-native integration; no customer-managed endpoints or secrets required.
 
 ## Observability & Troubleshooting Experience
 
@@ -141,62 +141,163 @@ Security posture: External endpoints require https + allowlisted domains; auth v
   - Retry: after fixing the root cause (e.g., alert resolved), users can re-initiate the upgrade from CLI/Portal.
 
 - **Auto-Upgrades:**
-  - Failures are logged in the cluster's activity log and surfaced in Azure Monitor, Comms manager (event details, breach context).
-  - Notifications can be sent via Action Groups, comms manager if configured.
+  - Failures are logged in the cluster's activity log and surfaced in Azure Monitor (event details, breach context).
+  - Notifications can be sent via Action Groups if configured.
   - Retry: auto-upgrades do not auto-retry after a breach; customers must manually resume or re-trigger after review.
 
 - **Level of Detail:**
   - Both manual and auto-upgrades provide: breached SLO name, metric, threshold, observed value, evaluation window, and recommended next steps.
-  - Portal and CLI expose a diagnostics panel with evaluation history and links to alert rules.
+  - Portal and CLI expose a diagnostics panel with evaluation history and links to rule groups.
 
 ## User Experience 
 
 ### API
-Delta on Managed Cluster/Agent Pool upgrade policy (abbreviated):
+Resource model (child resources) and operations
 
-```json
+This feature is modeled as child resources of the cluster so that configuration and status are easy to discover and RBAC/policy can target them directly.
+
+Resource types
+- Microsoft.ContainerService/managedClusters/upgradeGuards (one per cluster; fixed name "default")
+- Microsoft.ContainerService/managedClusters/upgradeGuards/evaluations/{upgradeRunId} (read‑only, per‑upgrade timeline)
+
+Singleton explanation: there is at most one upgradeGuards resource per cluster, and its ARM path always ends with `/upgradeGuards/default` (you don’t choose a custom name).
+
+Note: v1 scope is cluster‑level only (no per‑agentPool resource).
+
+Operations (ARM)
+- PUT managedClusters/{clusterName}/upgradeGuards/default — create/update config
+- GET managedClusters/{clusterName}/upgradeGuards/default — get config + current status
+- DELETE managedClusters/{clusterName}/upgradeGuards/default — remove config
+- GET managedClusters/{clusterName}/upgradeGuards/default/evaluations — list evaluations for recent upgrade runs
+- GET managedClusters/{clusterName}/upgradeGuards/default/evaluations/{upgradeRunId} — get one evaluation timeline
+(Same shapes apply for the agent pool child resource path.)
+
+Example: PUT (create/update) child resource
+```http
+PUT https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{clusterName}/upgradeGuards/default?api-version=2024-09-01
+Content-Type: application/json
 {
   "properties": {
-    "upgradePolicy": {
-      "healthGuards": {
-        "enabled": true,
-        "evaluation": {
-          "preflightMinutes": 10,
-          "canaryMinutes": 20,
-          "soakMinutes": 60,
-          "consecutiveBreachesRequired": 2
-        },
-        "actions": {
-          "onBreach": "pause",
-          "onBreachAgentPool": { "rollbackEnabled": true }
-        },
-        "azureMonitor": {
-          "alertRuleIds": [
-            "/subscriptions/.../resourceGroups/.../providers/microsoft.insights/metricAlerts/p95-latency-slo",
-            "/subscriptions/.../resourceGroups/.../providers/microsoft.insights/metricAlerts/CPU Usage Percentage - AutoKaarerror-rate-slo"
-          ]
-          // scopeResourceId removed (implicit cluster scope inferred from upgrade context). Supply only in future if cross-scope evaluation is enabled.
-        },
-        "prometheus": {
-          "mode": "managed",              // managed | external
-          "ruleNames": ["HighErrorRate", "P95LatencySpike"]
-        }
-      }
+    "enabled": true,
+    "evaluation": {
+      "preflightMinutes": 10,
+      "canaryMinutes": 20,
+      "soakMinutes": 60,
+      "consecutiveBreachesRequired": 2
+    },
+    "actions": {
+      "onBreach": "pause",
+      "onBreachAgentPool": { "rollbackEnabled": true }
+    },
+    "prometheus": {
+      "ruleGroupIds": [
+        "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}"
+      ],
+      "ruleNames": ["HighErrorRate", "P95LatencySpike"]
     }
   }
 }
 ```
-**Contract: Customer vs AKS (with explicit inputs & references)**
-- Azure Monitor (Customer provides): Existing alert rule resource IDs (metricAlerts, scheduledQueryRules, smartDetectorAlertRules) already firing on true SLO breaches. Docs: https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-types
-- Managed Prometheus (Customer provides): Rule group(s) of Prometheus alerting rules (resource type `Microsoft.AlertsManagement/prometheusRuleGroups`) in the connected workspace; list the ruleNames to enforce. Docs: https://learn.microsoft.com/azure/azure-monitor/essentials/prometheus-metrics-rule-groups
-- External / Self‑Hosted Prometheus (Customer provides):
-  1. HTTPS endpoint exposing `/api/v1/alerts` (must be allow‑listed)
-  2. Rule names to enforce (must appear in active alerts payload)
-  3. Authentication secret reference (Key Vault secret / workload identity). Upstream alerting docs: https://prometheus.io/docs/alerting/latest/alerts/ ; KV secrets (CSI driver): https://learn.microsoft.com/azure/aks/csi-secrets-store-driver
-  4. (Optional) CA bundle if using private PKI
-- Security Inputs (Customer): domain allowlist entry (policy), secret reference, optional action groups for notifications.
-- AKS Responsibilities: Poll sources during preflight/canary/soak, apply consecutive breach logic, decide pause/abort/rollback, emit diagnostics. Never mutates customer rules or thresholds.
-- AKS Non‑Responsibilities: Creating/editing alert rules, changing thresholds, parsing raw PromQL for external endpoints beyond rule status, auto‑remediation.
+
+Example: GET child resource (config + status)
+```http
+GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{clusterName}/upgradeGuards/default?api-version=2024-09-01
+```
+Response (excerpt)
+```json
+{
+  "name": "default",
+  "type": "Microsoft.ContainerService/managedClusters/upgradeGuards",
+  "properties": {
+    "enabled": true,
+    "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
+    "actions": { "onBreach": "pause", "onBreachAgentPool": { "rollbackEnabled": true } },
+    "prometheus": {
+      "ruleGroupIds": [
+        "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}"
+      ],
+      "ruleNames": ["HighErrorRate", "P95LatencySpike"]
+    },
+    "status": {
+      "phase": "canary",                      
+      "decision": "continue",                 
+      "currentUpgradeRunId": "{upgradeRunId}",
+      "lastEvaluation": {
+        "timestamp": "2025-08-13T10:00:00Z",
+        "ruleStatuses": [
+          { "name": "HighErrorRate", "firing": false, "consecutiveCount": 0 },
+          { "name": "P95LatencySpike", "firing": false, "consecutiveCount": 0 }
+        ]
+      },
+      "breaches": []
+    }
+  }
+}
+```
+
+Example: LIST evaluations (per upgrade run)
+```http
+GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{clusterName}/upgradeGuards/default/evaluations?api-version=2024-09-01
+```
+Response (excerpt)
+```json
+{
+  "value": [
+    {
+      "name": "{upgradeRunId}",
+      "properties": {
+        "startedAt": "2025-08-13T09:58:00Z",
+        "completedAt": "2025-08-13T11:20:00Z",
+        "decision": "completed",
+        "phaseDecisions": [
+          { "phase": "preflight", "decision": "continue" },
+          { "phase": "canary", "decision": "continue" },
+          { "phase": "soak", "decision": "completed" }
+        ],
+        "breaches": []
+      }
+    }
+  ]
+}
+```
+
+Example: GET one evaluation (failure)
+```http
+GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ContainerService/managedClusters/{clusterName}/upgradeGuards/default/evaluations/{upgradeRunId}?api-version=2024-09-01
+```
+Response (excerpt)
+```json
+{
+  "name": "{upgradeRunId}",
+  "properties": {
+    "startedAt": "2025-08-13T09:58:00Z",
+    "decision": "paused",
+    "pauseReason": {
+      "phase": "soak",
+      "action": "pause",
+      "breaches": [
+        { "ruleName": "HighErrorRate", "firing": true, "observedValue": 0.12, "threshold": 0.05, "consecutiveCount": 2 }
+      ]
+    },
+    "timeline": [
+      { "time": "2025-08-13T10:00:00Z", "phase": "preflight", "decision": "continue" },
+      { "time": "2025-08-13T10:40:00Z", "phase": "canary", "decision": "continue" },
+      { "time": "2025-08-13T11:15:00Z", "phase": "soak", "decision": "pause" }
+    ]
+  }
+}
+```
+
+Why a child resource?
+- Clear status surface (GET on one resource shows spec + live status)
+- Dedicated RBAC and Policy targeting
+- Single cluster‑scope config that applies to all node pools
+- Cleaner Portal/CLI mental model than burying state inside upgrade operations
+
+**Contract: Customer vs AKS (Managed Prometheus scope)**
+- Managed Prometheus (Customer provides): Rule group resource IDs (full ARM IDs of `Microsoft.AlertsManagement/prometheusRuleGroups`) in the connected workspace, and optionally a list of ruleNames within those groups to enforce. Docs: https://learn.microsoft.com/azure/azure-monitor/essentials/prometheus-metrics-rule-groups
+- AKS Responsibilities: Poll rule status during preflight/canary/soak, apply consecutive breach logic, decide pause/abort/rollback, emit diagnostics. Never mutates customer rules or thresholds.
+- AKS Non‑Responsibilities: Creating/editing alert rules, changing thresholds, auto‑remediation.
 
 ### Health Guard Properties (Merged Reference)
 
@@ -208,133 +309,38 @@ Delta on Managed Cluster/Agent Pool upgrade policy (abbreviated):
 | `evaluation.soakMinutes` | Post-upgrade observation window for delayed / cascading issues. | int | 10–360 | 60 | `enabled=true` | Yes (only before soak phase begins) |
 | `evaluation.consecutiveBreachesRequired` | Debounce: number of consecutive evaluations required to treat a firing signal as a breach. | int | 1–5 | 2 | `enabled=true` | Yes (any time; affects future decisions) |
 | `actions.onBreach` | Action when breach threshold met: pause (halt & await user) or abort (terminate upgrade). Control plane forced to pause-only. | enum | `pause` \| `abort` | `pause` | `enabled=true` | No (immutable per in-progress upgrade) |
-| `actions.onBreachAgentPool.rollbackEnabled` | Allows Blue/Green agent pool rollback on breach (when supported). | bool | true / false | false | Blue/Green scenario + agent pool | No (immutable per in-progress upgrade) |
-| `azureMonitor.alertRuleIds[]` | Azure Monitor alert rule resource IDs (metricAlerts, scheduledQueryRules, smartDetectorAlertRules) used as SLO guardrails. | array<string> | 1–32 IDs | – | Using Azure Monitor source OR no other source present (need ≥1 overall) | Yes (cannot remove IDs currently evaluating mid-phase) |
-| `prometheus.mode` | Prometheus source type. | enum | `managed` \| `external` | – | Using Prometheus rules | Yes |
-| `prometheus.ruleNames[]` | Prometheus alert (rule) names to enforce. | array<string> | 1–32 names | – | `prometheus.mode` set | Yes (cannot remove names actively breaching mid-phase) |
-| `prometheus.endpoint` | External Prometheus base URL (expects `/api/v1/alerts`). | string (URL) | HTTPS; length ≤2083 | – | `prometheus.mode=external` | Yes |
-| `prometheus.auth.keyVaultSecretRef` | Key Vault secret ID containing auth token / credential for external endpoint. | string | Valid Key Vault secret resource ID | – | External endpoint requires auth | Yes (rotation supported) |
-| `rollbackEnabled` (agent pool alias of `actions.onBreachAgentPool.rollbackEnabled`) | Convenience alias surfaced in some clients for rollback toggle. | bool | true / false | false | Blue/Green agent pool scenario | No (per in-progress upgrade) |
+| `actions.onBreachAgentPool.rollbackEnabled` | Allows Blue/Green agent pool rollback on breach (when supported). | bool | true / false | false | Blue/Green scenario | No (immutable per in-progress upgrade) |
+| `prometheus.ruleGroupIds[]` | Full resource IDs of Managed Prometheus rule groups to evaluate. All rules in these groups are eligible unless filtered by ruleNames. | array<string> | 1–16 IDs | – | `healthGuards.enabled=true` | Yes (cannot remove groups actively evaluating mid-phase) |
+| `prometheus.ruleNames[]` | Optional filter: specific alert rule names within the provided rule groups to enforce. If omitted, all alerting rules in the groups apply. | array<string> | 0–64 names | – | Optional | Yes (cannot remove names actively breaching mid-phase) |
+| `rollbackEnabled` (convenience alias of `actions.onBreachAgentPool.rollbackEnabled`) | Convenience alias for rollback toggle in Blue/Green upgrades. | bool | true / false | false | Blue/Green scenario | No (per in-progress upgrade) |
 
 Notes:
-- At least one signal source required: (`azureMonitor.alertRuleIds` OR `prometheus.ruleNames`) when `enabled=true`.
+- At least one `prometheus.ruleGroupIds` entry is required when `enabled=true`. `ruleNames` is optional and acts as an allowlist filter.
 - Mutation guards: Values cannot be shortened/changed for a phase already underway (service returns 409).
-- Fail-closed behavior: Source unreachable beyond retry budget → upgrade pauses (reason = SourceUnreachable).
 - Control plane upgrades: `actions.onBreach` treated as `pause` regardless of supplied `abort`.
-- Debounce logic: A breach is triggered only after `consecutiveBreachesRequired` sequential evaluations report firing.
-- Security (external Prometheus): Must be HTTPS + allowlisted domain; auth secret resolved via Key Vault (no inline secrets).
-
-
-**Validation (musts)** (unchanged summary)
-- If enabled: at least one source (azureMonitor.alertRuleIds OR prometheus.ruleNames) present.
-- Control plane: onBreach → pause only.
-- External Prom: https + allowlisted domain + valid auth secret.
 - Rollback only when agent pool Blue/Green supported.
-
-### Customer Contract (TL;DR)
-| Source | Customer Provides (Required) | Optional | AKS Reads Only | Docs |
-|--------|------------------------------|----------|----------------|------|
-| Azure Monitor | alertRuleIds (metricAlerts / scheduledQueryRules / smartDetector) | Action Group IDs | Firing status | https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-types |
-| Managed Prometheus | ruleNames (must exist in prometheusRuleGroups) | – | Rule firing state | https://learn.microsoft.com/azure/azure-monitor/essentials/prometheus-metrics-rule-groups |
-| External Prometheus | HTTPS endpoint (/api/v1/alerts), ruleNames, auth secret ref, allowlisted domain | CA bundle (private PKI) | Active alerts JSON | https://prometheus.io/docs/alerting/latest/alerts/ |
-| Common | evaluation windows, onBreach action | rollbackEnabled (agent pool) | Evaluation outcomes | (above) |
-
-### Customer Pre‑Upgrade Checklist (Quick)
-- Collected all alertRuleIds / ruleNames (stable names; no impending rename)
-- All SLO alerts currently healthy (not firing)
-- Auth secret stored in Key Vault; AKS MSI has get permission (scoped to secret)
-- External endpoint (if used) returns 200 JSON for /api/v1/alerts within timeout (<5s)
-- Domain on organization allowlist (policy)
-- Policy exemptions (if any) approved
-
-### Identity (Minimum Permissions)
-- AKS Managed Identity / workload identity needs:
-  - Key Vault: secrets/get on specific secret(s)
-  - Azure Monitor: read on alert rule resources (Microsoft.Insights/* read, Microsoft.AlertsManagement/* read where applicable)
-  - Prometheus rule groups: Microsoft.AlertsManagement/prometheusRuleGroups/read
-
-### Networking (External Endpoint Minimums)
-1. TLS 1.2+ valid cert (or provide CA bundle)
-2. FQDN allowlisted by policy
-3. Only /api/v1/alerts exposed (least surface)
-4. 5s server-side timeout + rate limiting (AKS pauses on timeout)
-5. Auth via Key Vault secret (no static inline tokens)
-
-(Advanced hardening: mTLS, WAF, Private Link, rotation cadence – defer to Appendix if needed.)
 
 ### Use Case Scenarios
 
-#### 1. Managed Alert Rules (Azure Monitor)
-**Prerequisites (Customer provides):** Existing latency & error-rate Azure Monitor alert rules (IDs); optional action group.
-**Steps:**
-1. Locate alert rule IDs (Portal: Monitor > Alerts > Alert rules > select rule > JSON View / Resource ID).
-2. Enable guardrails referencing IDs via CLI/Portal.
-3. AKS evaluates status each window; pauses on consecutive breaches.
-4. Customer remediates & resumes.
-**Monitoring:** `az aks upgrade-guards show`, Portal Alerts blade.
-**Docs:** Azure alert rule types https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-types
-
-API Example (Request - PATCH cluster):
-```http
-PATCH https://management.azure.com/subscriptions/{subId}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}?api-version=2024-09-01
-Content-Type: application/json
-{
-  "properties": {
-    "upgradePolicy": {
-      "healthGuards": {
-        "enabled": true,
-        "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
-        "actions": { "onBreach": "pause" },
-        "azureMonitor": {
-          "alertRuleIds": [
-            "/subscriptions/{subId}/resourceGroups/{rg}/providers/microsoft.insights/metricAlerts/p95-latency-slo",
-            "/subscriptions/{subId}/resourceGroups/{rg}/providers/microsoft.insights/scheduledQueryRules/error-rate-slo"
-          ]
-        }
-      }
-    }
-  }
-}
-```
-API Example (Response excerpt - GET cluster after configuration):
-```json
-{
-  "properties": {
-    "upgradePolicy": {
-      "healthGuards": {
-        "state": "Configured",
-        "lastEvaluation": {
-          "phase": "preflight",
-          "windowStart": "2025-08-12T10:00:00Z",
-            "alerts": [
-              {"id": "/subscriptions/.../metricAlerts/p95-latency-slo", "firing": false},
-              {"id": "/subscriptions/.../scheduledQueryRules/error-rate-slo", "firing": false}
-            ]
-        }
-      }
-    }
-  }
-}
-```
-
-#### 2. Managed Prometheus (Rule Groups)
+#### Managed Prometheus (Rule Groups)
 **Prerequisites (Customer provides):**
 - Managed Prometheus enabled (workspace connected to cluster)
 - Prometheus rule group with alerting rules (e.g., HighErrorRate, P95LatencySpike)
 - Rule names to enforce
-**Where to find rule names:** Portal: Monitor > Metrics (Prometheus) > Rule groups > open group > list of alert rules (Name column). Alternatively ARM: GET rule group resource (names appear under `properties.rules.name`).
+**Where to find rule group IDs:** Portal: Monitor > Metrics (Prometheus) > Rule groups > select group > JSON view to copy Resource ID; or ARM/CLI lookup. Rule names appear under `properties.rules.name` if you choose to filter.
 **Steps:**
 1. Create / verify rule group (Docs: https://learn.microsoft.com/azure/azure-monitor/essentials/prometheus-metrics-rule-groups) with SLO rules.
-2. Collect rule names to enforce (ensure severity & labels stable).
-3. Enable guardrails with mode managed and ruleNames list:
+2. Collect ruleGroupIds (full ARM IDs) and optional ruleNames to enforce.
+3. Enable guardrails with ruleGroupIds and optional ruleNames filter:
    ```sh
    az aks upgrade -g myRG -n myCluster --kubernetes-version X --enable-upgrade-guards \
-     --guards-prom-mode managed --guards-prom-rule-names HighErrorRate P95LatencySpike \
+     --guards-prom-rule-group-ids \
+       "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" \
+     --guards-prom-rule-names HighErrorRate P95LatencySpike \
      --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2
    ```
-4. AKS polls Managed Prometheus alert status; pauses on breaches.
+4. AKS polls Managed Prometheus rule status; pauses on breaches.
 5. Customer inspects alert (Portal: Monitor > Alerts or Prometheus rule groups blade), resolves issue, resumes.
-**Docs:** Rule groups creation https://learn.microsoft.com/azure/azure-monitor/essentials/prometheus-metrics-rule-groups
 
 API Example (Request - PATCH cluster):
 ```http
@@ -347,7 +353,12 @@ Content-Type: application/json
         "enabled": true,
         "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
         "actions": { "onBreach": "pause" },
-        "prometheus": { "mode": "managed", "ruleNames": ["HighErrorRate", "P95LatencySpike"] }
+        "prometheus": {
+          "ruleGroupIds": [
+            "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}"
+          ],
+          "ruleNames": ["HighErrorRate", "P95LatencySpike"]
+        }
       }
     }
   }
@@ -373,150 +384,50 @@ API Example (Response excerpt - evaluation snapshot):
 }
 ```
 
-#### 3. External Prometheus (Self‑Hosted Endpoint)
-**Required Inputs (Customer):**
-- Networking:
-    - HTTPS only (TLS 1.2+), dedicated DNS (e.g., https://prom.example.com); validate cert + hostname.
-    - Expose only /api/v1/alerts; no other admin paths on same host.
-    - Restrict inbound (Private Link / internal LB / firewall); if public, front with WAF; deny 0.0.0.0/0 except 443.
-    - Outbound evaluator egress via controlled path (Firewall) with FQDN allowlist (prom.example.com).
-    - Apply NSGs + network policies to block lateral movement.
-
-- Identity & Secrets:
-    - AKS evaluator uses managed (or workload) identity to pull secrets (Key Vault); no static creds in config.
-    - Prefer short‑lived OIDC / scoped token; rotate ≤90 days; store/rotate in Key Vault (soft delete + purge protection).
-    - Optional mTLS (client cert/key from Key Vault CSI); scope KV access to specific secret versions.
-
-- External Endpoint Access & Hardening:
-    - Enforce TLS 1.2+, certificate pin/chain validation; separate hostname if other APIs required.
-    - Rate limit + timeout; return 429/503 for backoff; AKS fails closed (pause) on errors/timeouts.
-    - Domain allowlisted via Azure Policy; block unapproved hosts.
-    - Minimal alert payload (rule name, labels); exclude PII.
-**Optional Inputs:** CA bundle secret if private CA.
-**Steps:**
-1. Ensure endpoint exposes `/api/v1/alerts` (curl https://prom.example.com/api/v1/alerts).
-2. Confirm target alert rules exist (Prometheus UI > Alerts) and names match desired SLOs.
-3. Store auth token in Key Vault (Docs: https://learn.microsoft.com/azure/key-vault/secrets/ ) and reference via secret provider (CSI: https://learn.microsoft.com/azure/aks/csi-secrets-store-driver ).
-4. Enable guardrails:
-   ```sh
-   az aks upgrade -g myRG -n myCluster --kubernetes-version X --enable-upgrade-guards \
-     --guards-prom-mode external --guards-prom-endpoint https://prom.example.com \
-     --guards-prom-auth-keyvault <kvSecretRef> \
-     --guards-prom-rule-names HighErrorRate P95LatencySpike \
-     --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2
-   ```
-5. AKS polls endpoint; pauses/aborts on consecutive breaches.
-6. Customer reviews breach (CLI diagnostics), fixes issue, retries.
-**Docs:** Upstream alerts https://prometheus.io/docs/alerting/latest/alerts/
-
-API Example (Request - PATCH cluster):
-```http
-PATCH https://management.azure.com/subscriptions/{subId}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}?api-version=2024-09-01
-Content-Type: application/json
-{
-  "properties": {
-    "upgradePolicy": {
-      "healthGuards": {
-        "enabled": true,
-        "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
-        "actions": { "onBreach": "abort" },
-        "prometheus": {
-          "mode": "external",
-          "endpoint": "https://prom.example.com",
-          "auth": { "keyVaultSecretRef": "/subscriptions/{subId}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/{kv}/secrets/prom-token" },
-          "ruleNames": ["HighErrorRate", "P95LatencySpike"]
-        }
-      }
-    }
-  }
-}
-```
-API Example (Response excerpt - breach causing pause):
-```json
-{
-  "properties": {
-    "upgradePolicy": {
-      "healthGuards": {
-        "state": "Paused",
-        "pauseReason": {
-          "phase": "soak",
-          "breaches": [
-            {"ruleName": "HighErrorRate", "firing": true, "observedValue": 0.12, "threshold": 0.05, "consecutiveCount": 2}
-          ],
-          "action": "abort"
-        }
-      }
-    }
-  }
-}
-```
-
-**/api/v1/alerts Expected Shape (excerpt)**
-```json
-{
-  "status": "success",
-  "data": {
-    "alerts": [
-      { "labels": { "alertname": "HighErrorRate" }, "state": "firing" },
-      { "labels": { "alertname": "P95LatencySpike" }, "state": "inactive" }
-    ]
-  }
-}
-```
-AKS matches alertname to provided ruleNames; firing|inactive used for breach evaluation.
-
 ### CLI Experience
-- Failure output: summarizes breached guardrails (alert/rule name, observed vs threshold, phase, action) and points to diagnostics: az aks upgrade-guards show -g <rg> -n <cluster>
-- Enable with Azure Monitor + Managed Prometheus example:
-    az aks upgrade -g rg -n c --kubernetes-version X --enable-upgrade-guards \
-        --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2 \
-        --guards-action pause \
-        --guards-azmon-alert-ids /subscriptions/.../metricAlerts/p95-latency-slo /subscriptions/.../scheduledQueryRules/error-rate-slo \
-        --guards-prom-mode managed --guards-prom-rule-names HighErrorRate P95LatencySpike \
-        --guards-agentpool-rollback true
-- External Prometheus example (abort on breach):
-    az aks upgrade -g rg -n c --kubernetes-version X --enable-upgrade-guards \
-        --guards-preflight 10 --guards-canary 20 --guards-soak 60 --guards-consecutive 2 \
-        --guards-action abort \
-        --guards-prom-mode external --guards-prom-endpoint https://prom.example.com \
-        --guards-prom-auth-keyvault /subscriptions/.../vaults/myKv/secrets/prom-token \
-        --guards-prom-rule-names HighErrorRate P95LatencySpike
-- Inspect last decision / breach timeline:
-    az aks upgrade-guards show -g rg -n c
+
+New (concise) commands targeting the cluster‑level child resource:
+- Create/Update:
+  az aks upgrade-guards set -g {resourceGroupName} -n {clusterName} \
+    --preflight 10 --canary 20 --soak 60 --consecutive 2 \
+    --action pause \
+    --prom-rule-group-ids \
+      "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" \
+    --prom-rule-names HighErrorRate P95LatencySpike
+- Show current config + status:
+  az aks upgrade-guards show -g {resourceGroupName} -n {clusterName}
+- Delete config:
+  az aks upgrade-guards delete -g {resourceGroupName} -n {clusterName}
+- List evaluations (upgrade runs):
+  az aks upgrade-guards evaluations list -g {resourceGroupName} -n {clusterName}
+- Show one evaluation:
+  az aks upgrade-guards evaluations show -g {resourceGroupName} -n {clusterName} --run-id {upgradeRunId}
+
+Output highlights
+- show: phase, decision, current run id, last evaluation (ruleStatuses)
+- evaluations list: startedAt/completedAt, per‑phase decisions, breaches summary
 
 ### Portal Experience
-- Upgrade wizard: SLO guardrails toggle (disabled by default unless organizational policy enforces)
-- Select alert sources: Azure Monitor alert rules (multi-select) and/or Prometheus rule names (managed or external endpoint config)
-- Configure: preflight, canary, soak minutes; consecutive breaches; action (pause | abort), optional agent pool rollback
-- Preview panel: enumerates selected signals, evaluation windows, and resulting stop conditions
-- On breach: banner details phase, rule(s), counts, chosen action; Resume / Abort buttons gated by RBAC
-- Diagnostics blade: chronological evaluation events (timestamp, phase, rule statuses, decision) + export
-- Blue/Green agent pool: guardrails wrap canary slice and pre‑cutover; rollback option visible only if supported
+
+- Location: Cluster > Upgrades > Upgrade Guards (Preview)
+- Configure (child resource):
+  - Enable
+  - Preflight/Canary/Soak minutes; Consecutive breaches; Action (pause|abort)
+  - Managed Prometheus: select Rule Group (by Resource ID) and optional Rule names
+- Status panel (read‑only):
+  - Current phase, decision, last evaluation ruleStatuses, breaches (if any)
+- Evaluations tab:
+  - List recent upgrade runs with per‑phase decisions; open details for breach context
+- Failure UX:
+  - Upgrade page shows banner with phase, rule, observed vs threshold, and action taken
 
 ### Policy Experience
-Built‑in (planned) policies:
-- Require healthGuards.enabled = true for production (alias: Microsoft.ContainerService/managedClusters/upgradePolicy.healthGuards.enabled)
-- Audit required Azure Monitor alert IDs present (alias: .../healthGuards.azureMonitor.alertRuleIds[*])
-- Audit required Prometheus rule names present (alias: .../healthGuards.prometheus.ruleNames[*])
-- Deny external prometheus.endpoint domains not on allowlist
-- DeployIfNotExists: stamp org defaults (enabled, evaluation windows, prometheus.mode) via aliases: 
-    - .../healthGuards.enabled
-    - .../healthGuards.evaluation.preflightMinutes
-    - .../healthGuards.evaluation.canaryMinutes
-    - .../healthGuards.evaluation.soakMinutes
-    - .../healthGuards.evaluation.consecutiveBreachesRequired
-    - .../healthGuards.prometheus.mode
-Automatic upgrade defaults (policy-driven POV):
-- Prod: baseline (10/20/60 minutes; consecutive=2; action=pause; latency + error alerts required). Opt‑out via exemption.
-- Non‑prod: disabled unless opted in.
-- Fleet/subscription policy can override windows, required rule sets.
 
-Example (conceptual) deny policy snippet (external endpoint domain allowlist):
-```
-Deny if: healthGuards.prometheus.mode == "external" AND
-  domain(extract(healthGuards.prometheus.endpoint)) NOT IN ["prom.example.com","prom.corp.local"]
-```
-(Implemented via policy rule conditions + alias for endpoint when exposed.)
+- Require child resource present and enabled for production
+  - Alias: Microsoft.ContainerService/managedClusters/upgradeGuards.enabled
+- Audit required Rule Group IDs
+  - Alias: .../managedClusters/upgradeGuards.prometheus.ruleGroupIds[*]
+- DeployIfNotExists: stamp org defaults (evaluation windows, action, rule group IDs)
 
 # Definition of Success
 
@@ -524,100 +435,85 @@ Deny if: healthGuards.prometheus.mode == "external" AND
 
 | No. | Outcome | Measure | Target | Priority |
 |-----|---------|---------|--------|---------|
-| 1 | Fewer upgrade-induced incidents | Post-upgrade Sev2+ tied to upgrades | -50% in 6 months | High |
-| 2 | Safer, faster upgrades | % upgrades with zero manual pause (customer initiated) | +30% in 2 quarters | High |
-| 3 | Adoption | % prod clusters with guardrails enabled | 70% in 2 quarters | High |
-| 4 | Detection quality | Breach precision TP/(TP+FP) | ≥80% | High |
-| 5 | Latency | Decision loop P95 | ≤2 min | Medium |
+| 1 | Fewer upgrade‑induced incidents | Post‑upgrade Sev2+ tied to upgrades | -50% (6 months) | High |
+| 2 | Safer, faster upgrades | Upgrades without manual pause | +30% (2 quarters) | High |
+| 3 | Adoption | Prod clusters with guards configured | 70% (2 quarters) | High |
+| 4 | Decision latency | Guard decision loop P95 | ≤2 min | Medium |
 
 # Requirements
 
-## Functional Requirements
+## Functional Requirements (concise)
 | No. | Requirement | Priority |
 |-----|-------------|----------|
-| 1 | Configure healthGuards via API/CLI/Portal | High |
-| 2 | Azure Monitor alert rule integration (IDs) | High |
-| 3 | Prometheus integration (managed + external with auth) | High |
-| 4 | Evaluation windows: preflight, canary, soak + consecutive breach logic | High |
-| 5 | Actions: pause | abort; agent pool rollback toggle (where supported) | High |
-| 6 | Structured decision & breach logging (phase, rule, value) | High |
-| 7 | Policy: require / audit / deny / DeployIfNotExists | Medium |
-| 8 | Noise controls: warm-up suppression, debounce, cooldown | Medium |
-| 9 | External endpoint security: TLS, allowlist, Key Vault / MI auth | High |
-| 10 | Safe default on evaluator errors (fail closed → pause) | High |
+| 1 | Cluster‑level child resource: upgradeGuards (PUT/GET/DELETE) | High |
+| 2 | Managed Prometheus integration via ruleGroupIds (+ optional ruleNames filter) | High |
+| 3 | Evaluation windows (preflight, canary, soak) + consecutive breach logic | High |
+| 4 | Actions: pause | abort | High |
+| 5 | Status surface on child resource; evaluations per upgrade run (LIST/GET) | High |
+| 6 | Policy/RBAC targeting the child resource | Medium |
 
-## Observability & Troubleshooting Requirements
+## Test Requirements (concise)
 | No. | Requirement | Priority |
 |-----|-------------|----------|
-| 1 | Detailed breach diagnostics (CLI/Portal) | High |
-| 2 | Log every decision (continue, pause, abort, rollback) with metadata | High |
-| 3 | Manual resume after remediation | High |
-| 4 | Auto-upgrade failures surfaced in Activity Log, Alerts, Comms manager | High |
-| 5 | Actionable messages with next steps + direct rule links | High |
+| 1 | E2E: set/show/delete config; run upgrade; success path | High |
+| 2 | Breach path: trigger firing rule → pause/abort with correct diagnostics | High |
+| 3 | Scale: concurrent guarded upgrades across many clusters | High |
+| 4 | Validation: ruleGroupIds exist; ruleNames belong to groups | High |
+| 5 | Resilience: fail‑closed behavior on transient errors/timeouts | High |
 
-## Test Requirements
-| No. | Requirement | Priority |
-|-----|-------------|----------|
-| 1 | E2E across sources (Azure Monitor / managed / external Prom) | High |
-| 2 | Scale: concurrent guarded upgrades (≥1000 pools) | High |
-| 3 | False-positive resilience (debounce, consecutive counts) | High |
-| 4 | Security: endpoint validation, secret access (KV/MI), TLS enforcement | High |
-| 5 | Control plane vs agent pool variance (pause-only vs rollback) | Medium |
-| 6 | Rollback correctness on agent pool breach | High |
-| 7 | Fail-closed paths (timeouts, auth errors) cause pause not silent pass | High |
+# Dependencies and risks
 
-# Dependencies and Risks
-
-| No. | Deliverable | Giver Team |
-|-----|------------|------------|
-| 1 | Alerts API stability / permissions | Azure Monitor |
-| 2 | Managed Prometheus rule status APIs | Azure Monitor |
-| 3 | ARM schema + SDK updates | ARM / SDK |
-| 4 | CLI & Portal feature surfaces | Azure CLI / Portal |
-| 5 | Agent pool rollback hooks | AKS Runtime |
-
-Key risks & mitigations:
-- False positives → warm-up + consecutive breach + cooldown
-- External endpoint instability → timeout/backoff + fail-closed (pause) + metrics
-- Security (exfiltration / weak auth) → TLS + allowlist + Key Vault + scoped MI
-- Control plane no rollback → enforced pause-only with guidance
-- Poor alert quality → baseline SLO templates + docs on tuning precision
-- Scale contention (polling overhead) → adaptive polling cadence, batching, per-source jitter
+| No. | Requirement or Deliverable | Giver Team / Contact | Risk / Mitigation |
+|-----|----------------------------|----------------------|-------------------|
+| 1 | AlertsManagement Prometheus Rule Groups API (read-only) | Azure Monitor (Alerts/Prometheus) | API version drift; lock to preview api-version and add compat shims |
+| 2 | AKS CLI commands (upgrade-guards + evaluations) | AKS CLI | Schedule slip; ship via extension first, then merge to core |
+| 3 | Portal blade (Upgrade Guards + Evaluations) | AKS UX/Portal | Staged rollout; fall back to ARM/CLI if delayed |
+| 4 | Built-in Policy definitions + aliases | Azure Policy | Start with samples; add built-ins once aliases finalize |
+| 5 | RBAC read on rule groups | Customer tenancy | Validation + actionable diagnostics when permissions missing |
+| 6 | Upgrade engine decision loop scale/SLO | AKS Service | Capacity planning, backoff, circuit breakers; fail-closed to pause |
+| 7 | Optional rollback wiring to Blue/Green | AKS Blue/Green | Guardrails work without rollback; feature-flag coupling |
 
 # Compete
 
 ## GKE
-- Offers upgrade strategies (surge, blue/green under maintenance) but no native integration of customer SLO alert gating.
+- Strengths: mature upgrade workflows (surge, PDB-aware), maintenance windows/exclusions, strong fleet policy story. (Refs: [Surge upgrades](https://cloud.google.com/kubernetes-engine/docs/how-to/node-pool-upgrade#surge-upgrades), [Pod Disruption Budgets](https://cloud.google.com/kubernetes-engine/docs/how-to/pod-disruption-budgets), [Maintenance windows/exclusions](https://cloud.google.com/kubernetes-engine/docs/how-to/maintenance-windows-and-exclusions), [Fleet/Anthos overview](https://cloud.google.com/anthos/fleet-management/docs/overview))
+- Gap vs this feature: no first-class app SLO gating integrated into upgrade orchestration; customers wire Cloud Monitoring/Prometheus alerts via external CD gates.
+- Positioning: AKS integrates app SLO signals natively into the upgrade engine with queryable status and policyable config.
+
 ## EKS
-- Relies on external tooling / custom pipelines for SLO gating; no first-class customer alert integration in managed upgrade flow.
-Competitive advantage: Integrated, policy-governable SLO guardrails (Azure Monitor + Prometheus) embedded in managed upgrade lifecycle with rollback hooks and diagnostics.
+- Strengths: managed node group upgrades with maxUnavailable, health checks; broad ecosystem integrations (Argo CD, Flux). (Refs: [Managed node group update behavior](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-update-behavior.html), [Update config: maxUnavailable](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html#managed-node-group-update-config), [Argo CD on EKS](https://www.eksworkshop.com/docs/gitops/argocd/), [Flux on EKS](https://fluxcd.io/docs/use-cases/gitops-eks/))
+- Gap vs this feature: no built-in app SLO gates in upgrade orchestration; typical pattern is CloudWatch/Prometheus alerts in pipelines/manual checks.
+- Positioning: AKS offers built-in, policy-governed SLO guardrails that pause/abort upgrades without bespoke pipelines.
 
-## Appendix: FAQ (Concise)
+# Appendix: FAQ
 
-Q: Why support self-hosted Prometheus now?
-A: Enterprise reality: significant subset (≈15%) relies on self-hosted for control, regulatory, air-gapped, or existing taxonomy reasons. Source-agnostic lowers friction and accelerates adoption.
+- Why model this as a child resource instead of an inline cluster property?
+  - Clear, queryable status (config + live state in one GET), first-class RBAC/policy targeting, independent lifecycle/versioning from the core cluster spec.
 
-Q: Is this intended to drive Managed Prometheus adoption?
-A: Primary goal is safer upgrades. Managed Prom ease-of-use may yield modest uplift, but design remains source-agnostic to avoid vendor lock friction.
+- Why is it a singleton with a fixed name "default" (no custom name)?
+  - One source of truth per cluster avoids conflicting configs and name sprawl. A stable ARM path (/upgradeGuards/default) makes RBAC, Policy aliases, CLI/Portal, and automation simple and consistent. It also reduces drift and eases DeployIfNotExists stamping of org defaults. If we add pool-level resources or reusable profiles later, the cluster-level default remains a single, predictable anchor.
 
-Q: What if no accessible Prometheus endpoint exists?
-A: Use existing Azure Monitor metric/log alerts, or expose a secured endpoint (Private Link / allowlist). Without a reachable source, Prom-based signals cannot participate.
+- Why only Azure Managed Prometheus in v1 and not self-hosted Prometheus or Azure Monitor alerts?
+  - Adoption (~48% of clusters), lowest integration/identity complexity, fastest path to value. We can add Azure Monitor alerts and self‑hosted endpoints in later phases.
 
-Q: Why not rely solely on readiness/liveness probes?
-A: Probes detect binary pod health, not latency/error regressions, delayed OOM, or cascading failures. Aggregated SLO alerts provide earlier, actionable degradation signals.
+- Does this gate control plane upgrades?
+  - Control plane honors pause-only semantics; no rollback. Agent pool upgrades can optionally rollback when Blue/Green is enabled.
 
-Q: Can other vendors (e.g., Datadog) integrate?
-A: Yes, if they expose an HTTPS endpoint mapping defined rule names to firing state. Future connectors can optimize discovery.
+- Do I have to specify rule names?
+  - No. If omitted, all alerting rules in the provided rule groups are eligible. Use ruleNames to allowlist a subset.
 
-Q: How is authentication handled for private endpoints?
-A: HTTPS + domain allowlist + Key Vault secret or managed identity. Private Link or in-cluster evaluator (future phase) for truly private networks.
+- How do you reduce false positives/noise?
+  - Consecutive breach counts, warm-up suppression in preflight, debounce windows, and explicit customer-selected signals.
 
-Q: How are false positives minimized?
-A: Warm-up suppression, consecutive breach threshold, debounce/cooldown, and (recommended) correlation with upgrade phase metrics (e.g., node upgrade progress) to filter ambient noise.
+- What happens if the rule group API is temporarily unavailable?
+  - Fail-closed to pause with diagnostics; customers can retry once availability is restored.
 
-Q: What happens on evaluator or source errors?
-A: Fail-closed: upgrade pauses (never silently passes), surfaced with error context for remediation.
+- How do I find the rule group resource ID safely?
+  - Copy from the rule group’s JSON in Portal/ARM. Use placeholders in docs. Provide full ARM IDs in automation (Policy/CLI/IaC).
 
-Q: How does rollback differ from pause?
-A: Pause halts progress; rollback (agent pool Blue/Green only) reverts traffic/primary designation to previous pool; control plane only supports pause.
+- Can I reuse one guard configuration across many clusters?
+  - Not in v1. Considered for the future via a reusable profile + cluster binding.
+
+- Does this replace blue/green upgrades?
+  - No. It complements them by adding app SLO gating to canary/soak phases and optional rollback.
 
