@@ -12,7 +12,7 @@ last-updated: 2025-08-13
 
 # Overview
 
-Before this feature, AKS customers had to hand‑craft blue/green flows and stitch alerts to decide whether to proceed or stop upgrades. Now, AKS customers can declare application SLO guardrails using Azure Managed Prometheus rule groups that the upgrade process enforces with canary and soak checks to automatically pause or abort on anomalies.
+Before this feature, AKS customers had to hand‑craft blue/green flows and stitch alerts to decide whether to proceed or stop upgrades. Now, AKS customers can declare application SLO guardrails using Azure Managed Prometheus rule groups that the upgrade process enforces with preflight, canary, and post‑upgrade checks to automatically abort—or roll back for agent pools—on anomalies.
 
 ## Problem Statement / Motivation
 
@@ -27,14 +27,25 @@ Examples observed:
 ## Goals/Non-Goals
 
 ### Functional Goals
+
+- Policy-driven upgrade guardrails that evaluate application SLOs during preflight, canary, and post-upgrade phases
+- Multiple named gates per cluster via child resources: managedClusters/{cluster}/upgradeGatesReferences/{gateName}
+- Reusable gate specs as peer resources: upgradeGates/{gateName}, bindable by many clusters for consistency
+- Decision actions on breach: abort, or rollback for agent pools (rolling and blue/green) when configured
+- Per-rule consecutive breach overrides to reduce noise; gate-level default when no override provided
+- First-class governance: Azure Policy and RBAC targeting at the child resource path; audit of decisions and immutable breach events
+- Maintenance window compatibility for predictable scheduling (defined separately)
+- Node pool coverage for VMSS and VM-based pools; control plane is abort-only (no rollback)
+- Reuse across services: same gate model applicable to AKS agent pool upgrades and Managed Mesh upgrades
+- Separation of pace (soak) and safety (gates): Node/Nodepool soak lives in the upgrade engine; gates evaluate independently. In Blue/Green, rollback is only possible within the Nodepool Soak TTL; beyond TTL, breaches abort. Control plane remains abort-only.
+
 - Declare SLO guardrails via existing monitoring investments:
   - Prometheus (Azure Managed Prometheus rule groups)
-- Support preflight (checks before upgrade), canary (limited early upgrade phase—upgrade a subset of nodes/pods to catch issues before full rollout), and post-upgrade soak windows (monitoring after upgrade to detect delayed problems)
-- On breach: pause or abort; optionally trigger agent pool rollback when available
+- Support preflight (checks before upgrade), canary (limited early upgrade phase), and post-upgrade windows (monitoring after upgrade/cutover to detect delayed problems)
+- On breach: abort; optionally trigger agent pool rollback when available
 - Log gating decisions/breaches for audit and diagnostics
 - Azure Policy enablement to require guardrails in production
 - Scope: Applies to regular rolling upgrades and to Blue/Green agent pool upgrades when available
-- Node pool coverage: Supported for VMSS and VM‑based node pools
 
 ### Non-Functional Goals
 - Guard decision loop P95 ≤ 2 minutes
@@ -44,7 +55,7 @@ Examples observed:
 
 ### Non-Goals
 - Signal sources: v1 supports Azure Managed Prometheus only; Azure Monitor alert rules and self‑hosted/external Prometheus are out of scope and deferred to a later phase
-- No fleet-wide or multi-cluster upgrade orchestration (no cross-cluster scheduling/ordering). Fleet-wide configuration governance is supported via reusable profiles + Azure Policy.
+- No fleet-wide or multi-cluster upgrade orchestration (no cross-cluster scheduling/ordering). Fleet-wide configuration governance is supported via reusable gates + Azure Policy.
 - No full blue/green traffic orchestration
 - No control plane rollback (unsupported); agent pool rollback only when available
 - No auto‑remediation of applications
@@ -53,7 +64,7 @@ Examples observed:
 
 | Persona | Required permissions | User Journey and Success Criteria |
 |---------|----------------------|-----------------------------------|
-| Developer / Cluster Owner | Microsoft.ContainerService/managedClusters/write; Microsoft.AlertsManagement/prometheusRuleGroups/read | Reference existing Managed Prometheus alert rules; upgrade pauses/aborts on breach. Success: No SLO breach escapes an upgrade. |
+| Developer / Cluster Owner | Microsoft.ContainerService/managedClusters/write; Microsoft.AlertsManagement/prometheusRuleGroups/read | Reference existing Managed Prometheus alert rules; upgrade aborts or rolls back (agent pools) on breach. Success: No SLO breach escapes an upgrade. |
 | Platform Operator | Microsoft.ContainerService/managedClusters/*; Microsoft.AlertsManagement/prometheusRuleGroups/* | Define org defaults; enforce via policy; monitor compliance. Success: Safe upgrades at scale without bespoke pipelines. |
 
 ## Customers and Business Impact
@@ -98,7 +109,7 @@ Business Impact / OKR Alignment:
 
 Announcing SLO‑Gated, Metric‑Aware Upgrades for AKS
 
-AKS upgrades can now honor your application SLOs. Reference Azure Managed Prometheus rule groups, configure canary/soak windows, and AKS will pause or abort upgrades on anomalies—no bespoke pipelines required. Public preview for agent pool upgrades this release; GA to follow after feedback.
+AKS upgrades can now honor your application SLOs. Reference Azure Managed Prometheus rule groups, configure preflight/canary/post‑upgrade windows, and AKS will abort—or roll back for agent pools—on anomalies. Public preview for agent pool upgrades this release; GA to follow after feedback.
 
 **Addressing Key Challenges**
 - Nuanced regressions (latency, error rate, delayed OOMs) missed by readiness checks
@@ -107,11 +118,11 @@ AKS upgrades can now honor your application SLOs. Reference Azure Managed Promet
 
 **Functionality and Usage**
 - Configure guardrails via API/CLI/Portal using existing Azure Managed Prometheus rule groups
-- Evaluate in preflight, canary, and post‑upgrade soak windows; on breach → pause/abort; optional agent pool rollback
-- Works with AKS Blue/Green nodepool upgrades: guardrails gate canary and pre‑cutover phases
+- Evaluate in preflight, canary, and post-upgrade phases; on breach → abort, or rollback for agent pools when configured
+- Works with AKS Blue/Green nodepool upgrades: guardrails gate canary, pre‑cutover, and post‑upgrade phases
 
 **Availability**
-- Public Preview: agent pool upgrades (VMSS and VM node pools); control plane uses pause‑only (no rollback)
+- Public Preview: agent pool upgrades (VMSS and VM node pools); control plane uses abort-only (no rollback)
 - GA target: adds built‑in policies and deeper Managed Prometheus integration
 - Blue/Green nodepool upgrades available later this year; guardrails complement, not replace
 
@@ -142,20 +153,25 @@ False positives/noise mitigation: consecutive breaches, warm‑up suppression, d
 
 Security posture: Platform-native integration; no customer-managed endpoints or secrets required.
 
+Soak vs Gate (concise)
+- Rolling agent pools: Node Soak (inter-node delay) remains an upgrade engine setting and does not appear in the gate API; gates still run preflight/canary/post-upgrade on their timers.
+- Blue/Green: Nodepool Soak TTL bounds rollback. Gates can monitor longer, but after TTL, breaches result in abort even if action=rollback.
+- Control plane: Same gate schema; rollback unsupported. Canary may effectively be 0 (or a short stabilization window).
+
 ## Observability & Troubleshooting Experience
 
 ### Failure Visibility & Diagnostics
 
 - **Manual Upgrades:**
   - Failures due to guardrail breaches are shown in CLI/Portal with clear error messages: which SLO(s) breached, metric, threshold, observed value, and evaluation window.
-  - Diagnostic logs and gating decision summaries are available via `az aks upgrade-gates show` and in the Portal diagnostics blade.
+  - Diagnostic logs and gating decision summaries are available via `az aks upgrade-gates reference show -g {rg} -n {cluster} --gate {gateName}` and in the Portal diagnostics blade under Upgrade > Guardrails.
   - Users can review the decision timeline, including timestamps, signals, and breach rationale.
   - Retry: after fixing the root cause (e.g., alert resolved), users can re-initiate the upgrade from CLI/Portal.
 
 - **Auto-Upgrades:**
   - Failures are logged in the cluster's activity log and surfaced in Azure Monitor (event details, breach context).
   - Notifications can be sent via Action Groups if configured.
-  - Retry: auto-upgrades do not auto-retry after a breach; customers must manually resume or re-trigger after review.
+  - Retry: auto-upgrades do not auto-retry after a breach; customers must manually re-trigger after review.
 
 - **Level of Detail:**
   - Both manual and auto-upgrades provide: breached SLO name, metric, threshold, observed value, evaluation window, and recommended next steps.
@@ -163,319 +179,274 @@ Security posture: Platform-native integration; no customer-managed endpoints or 
 
 ## User Experience 
 
+### Operator Journeys (Scenarios)
+- Manual vs Auto Upgrades
+  - Manual: Operator triggers upgrade; gate evaluates preflight, canary, and post-upgrade. On breach, upgrade aborts or rolls back (agent pools) per configuration; operator reviews diagnostics to decide next steps.
+  - Auto: Policy/schedule initiates upgrade; on breach, gate aborts (or rolls back for agent pools if configured). Notification/event is emitted; operator intervention required.
+- Rolling vs Blue/Green
+  - Rolling: Gate runs preflight, then canary on a limited slice, then post-upgrade. If enabled/supported and configured, agent pool rollback can be invoked on breach; otherwise abort.
+  - Blue/Green: Gate runs preflight/canary before cutover; after cutover, post-upgrade monitors nodepool health. If a breach occurs within the Nodepool Soak TTL (up to 7 days), rollback traffic to Blue (old pool). If no breach within TTL, the upgrade is successful and the service remains on Green (new pool).
+- Abort vs Rollback
+  - Abort: Default action when rollback is not supported (e.g., control plane) or not configured. Aborts stop the run; no automatic retries.
+  - Rollback: Configure for agent pools when available (rolling and blue/green). Breach within policy and soak TTL reverts to last known good (blue or prior state). Outside TTL or on unsupported scope, we abort.
+- Managed Prometheus signals (decision inputs)
+  - Operator selects Managed Prometheus rule groups; the gate snapshots rules at session start. Decisions are made on firing alerts with optional per‑rule consecutive counts (debounce). Only signals in the snapshot influence the session; mid‑session edits don’t drift decisions.
+- Control plane‑only manual upgrade
+  - Gate evaluates preflight/canary/post-upgrade. Outcomes are abort-only (no rollback). Recommended: fix health, retry later, or disable the gate if risk‑accepted.
+- Multiple gates and reuse across clusters
+  - A cluster can bind multiple named gates (e.g., app-slo, platform, payments-critical). Each gate is an `upgradeGatesReferences/{gateName}` child. Reusable `upgradeGates/{gateName}` specs allow many clusters to bind to the same gate for consistent policy with minimal writes.
+
+#### Examples with timelines (mock)
+Assumptions used below unless stated: evaluation windows preflight=10m, canary=20m, postUpgrade=60m; gate-level consecutiveBreachesRequired=2; per‑rule override for HighErrorRate=1. Rules referenced: HighErrorRate, P95LatencySpike.
+
+1) Rolling upgrade — action=abort (agent pool)
+- Timeline
+  - T+00m: Preflight starts (phase=preflight, decision=pending). No alerts fire.
+  - T+06m: Preflight still healthy. At T+10m: proceed → phase moves to canary.
+  - T+12m: Canary evaluating. P95LatencySpike fires first time (1/2). Decision remains pending.
+  - T+18m: P95LatencySpike fires second consecutive time (2/2) → breach recorded.
+  - T+18m: Decision=abort. Upgrade stops; remaining nodes are not touched.
+- What the user sees
+  - CLI: `az aks upgrade-gates reference show ... --gate app-slo` → status { phase: "canary", decision: "abort" } with breach details.
+  - CLI: `az aks upgrade-gates evaluations show ... --gate app-slo --session-id {id}` → evaluations show two consecutive latency breaches at T+12/T+18.
+  - Portal: Guardrails panel shows aborted during canary; breach banner lists P95LatencySpike with observed vs threshold.
+- Notes
+  - Control plane would also abort (rollback unsupported).
+
+2) Rolling upgrade — action=rollback (agent pool)
+- Timeline
+  - T+00m: Preflight passes (no alerts).
+  - T+10m: Canary starts. HighErrorRate fires (override consecutive=1) → immediate breach.
+  - T+10m: Decision=rollback. Nodes upgraded so far are reverted to previous image/version; run concludes.
+- What the user sees
+  - CLI status shows { phase: "canary", decision: "rollback" }.
+  - Evaluations include a single HighErrorRate breach with action=rollback.
+  - Portal shows rollback initiated due to HighErrorRate (consecutive=1 override).
+- Notes
+  - If rollback is unavailable for this pool/type, action gracefully falls back to abort.
+
+3) Blue/Green upgrade — post-upgrade breach within soak TTL → rollback to Blue
+- Config
+  - Preflight=5m, Canary(pre‑cutover)=10m, PostUpgrade=60m, action=rollback; Nodepool Soak TTL=7d.
+- Timeline
+  - T+00m: Preflight passes; canary passes without breaches.
+  - T+20m: Cutover to Green completes; postUpgrade monitoring begins.
+  - T+45m: HighErrorRate fires (consecutive=1) → breach during postUpgrade window and within soak TTL.
+  - T+45m: Decision=rollback. Traffic rolls back to Blue; session ends.
+- What the user sees
+  - CLI/Portal status { phase: "postUpgrade", decision: "rollback" } and breach details (rule, observed, threshold).
+  - Evaluations timeline shows stable preflight/canary, then postUpgrade breach at T+45m.
+- Notes
+  - If the breach occurred after the soak TTL, the system would abort further actions and require operator intervention.
+
+4) Control plane upgrade — abort-only
+- Config
+  - Same evaluation windows; action=rollback configured but not supported for control plane.
+- Timeline
+  - T+00m–T+10m: Preflight healthy. T+12m: Canary P95LatencySpike fires twice (2/2).
+  - T+18m: Decision=abort; no rollback attempted.
+- What the user sees
+  - Status shows decision=abort with a note in diagnostics: rollback unsupported for control plane; action fell back to abort.
+
+Operational follow-ups for any aborted/rolled back session
+- Fix underlying issue (e.g., tune alert, mitigate regression) and re-run the upgrade.
+- Optionally disable a gate temporarily if risk is explicitly accepted, then re-enable after mitigation.
+
 ### API
 
-API Design options 
+API design 
 
-Shared contract
-- Signals: Azure Managed Prometheus only (v1). Customers provide full ARM IDs of rule groups and may include ruleNames.
-- Surfaces: cluster exposes live status; per-upgrade timelines via evaluations; both include operationId, correlationId, scope, agentPool, requestedVersion.
-- Identity in results: every rule has ruleGroupId (full ARM ID) + ruleName; observed vs threshold is returned.
+Concepts (concise)
+- Upgrade Gate Reference (cluster child): `managedClusters/{cluster}/upgradeGatesReferences/{gateName}` holds enablement, optional inline spec or binding, live status, and per‑session evaluations.
+- Reusable Upgrade Gate (peer resource): `upgradeGates/{gateName}` is authored once and bound by many clusters; spec only, no status.
+- Evaluation: Per‑session, per‑phase decision record captured under the child; separate from immutable Breach events.
 
-Option 1 — Cluster child (singleton)
-- Contract (ARM):
-  - Config/status at `managedClusters/{cluster}/upgradeGates/default`
-  - Evaluations at `managedClusters/{cluster}/upgradeGates/default/evaluations/{upgradeRunId}`
-  - PUT body: `properties.enabled`, `properties.evaluation`, `properties.actions`, `properties.prometheus.ruleGroupIds[]`, optional `properties.prometheus.ruleNames[]`
-- Pros (customer): simple mental model; config + status in one GET; clean RBAC/Policy targeting; easy future pool-level override.
-- Cons (customer): per-cluster updates; org-wide changes require many writes.
+Property rationale (Why)
+- Upgrade Gate Reference (child): Cluster-scoped enable/disable and status live with the cluster, enabling Policy/RBAC targeting and localized state without mutating the reusable spec.
+- Reusable Upgrade Gate (peer): Centralize a spec once and reuse across many clusters for consistency and minimal writes; avoids duplication and drift.
+- enabled: Safe toggle to opt clusters in/out without deleting bindings; useful for incident response and staged rollouts.
+- upgradeGate.id vs inline: Bind to reuse shared policy; inline for cluster-specific needs or experimentation. Both use the same schema to simplify tooling.
+- evaluation.preflightMinutes: Timebox pre-upgrade checks to catch regressions early (before touching capacity); 0 disables if not needed.
+- evaluation.canaryMinutes: Observe a small early slice to detect issues before full rollout; 0 disables when canary is impractical.
+- evaluation.postUpgradeMinutes: Monitor after upgrade/cutover to detect delayed issues; 0 disables when post monitoring is not needed. For blue/green, aligns with Nodepool Soak TTL. Rollback is only possible within the Blue/Green Nodepool Soak TTL; beyond TTL, breaches result in abort even if action=rollback.
+- evaluation.consecutiveBreachesRequired: Debounce noisy signals; gate-level default applies when a rule has no explicit override.
+- actions.onBreach: Operator intent on breach—abort, or rollback (agent pools only). If set to rollback on unsupported scope (e.g., control plane), the service aborts. In Blue/Green, rollback is honored only within the Nodepool Soak TTL; outside TTL, the action falls back to abort.
+- prometheus.ruleGroups[].id: Explicit ARM IDs ensure correct tenancy/scope and RBAC evaluation; prevents accidental rule drift.
+- prometheus.ruleGroups[].rules[].name: Allows per-rule consecutive overrides without splitting rule groups; improves noise control.
+- status.phase/decision: Single-glance live snapshot for UX and automation.
+- status.currentUpgradeSessionId: Stable identifier for this upgrade session; used to correlate evaluations and breaches across the gate lifecycle; distinct from operationId/correlationId used by ARM/activity log.
+- status.currentUpgradeRef: Adds operationId/correlationId/scope to link with Activity Logs and backend diagnostics for end-to-end traceability.
+- breaches (in status) vs evaluations (child): Breaches are durable audit events of gating decisions; evaluations provide the detailed timeline per phase without bloating live status.
+- evaluations child collection: Dedicated history surface keyed by upgradeSessionId for retrieval and compliance queries.
 
-Option 2 — Reusable profile + binding (preferred)
-- Contract (ARM):
-  - Reusable spec at `upgradeGateProfiles/{profileName}` (RG/sub scope; no status)
-  - Cluster binds by setting `properties.profile.id` on `/managedClusters/{cluster}/upgradeGates/default`; profile is authoritative and snapshotted at run start
-- Pros (customer): manage once, reuse across hundreds of clusters; strong governance; fewer writes; consistent defaults; still get cluster-local status/evaluations.
-- Cons (customer): indirection (profile + binding) to learn; profile lifecycle/versioning to manage.
-
-Preferred design
-- We prefer Option 2 for fleet-scale usability and governance while retaining the child for status/RBAC.
-
-Why Option 2 is preferred (expanded)
-- Fleet-scale configuration governance (not cross-cluster orchestration): update one profile to affect hundreds of clusters instead of N per-cluster writes.
- - Governance and RBAC: profiles can be authored by platform teams; clusters only bind by ID. Azure Policy can require a specific profile or any profile binding.
- - Consistency and drift control: binding + snapshot-at-upgrade-start prevents mid-run drift; easy to audit which profile governed a run.
- - Safer rollouts: profile versioning/rotation enables ring-based rollouts by rebinding subsets, without editing every cluster.
- - Operational efficiency: fewer ARM writes lowers risk of throttling and reduces operational toil.
- - Discoverability preserved: status and evaluations remain on the cluster child, so operators don’t chase central resources for live health.
-
-ARM operations (Option 2 — profile + binding)
-- Child (cluster):
-  - PUT /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGates/default?api-version=2024-09-01
-  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGates/default?api-version=2024-09-01
-  - DELETE /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGates/default?api-version=2024-09-01
-  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGates/default/evaluations?api-version=2024-09-01
-  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGates/default/evaluations/{upgradeRunId}?api-version=2024-09-01
-- Profiles (reusable spec):
-  - PUT/GET/DELETE /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/upgradeGateProfiles/{profileName}?api-version=2024-09-01
-
-Notes
-- The child resource is the status/diagnostics surface and the binding point (properties.profile.id). Profiles hold reusable spec; no status.
-- Evaluations are read-only and keyed by upgradeRunId; shapes include upgradeRef (operationId, correlationId, scope, agentPool, requestedVersion).
-
-Prometheus linkage and identity
-- Provide full ARM IDs for `Microsoft.AlertsManagement/prometheusRuleGroups` in `prometheus.ruleGroupIds[]`.
-- Optional `prometheus.ruleNames[]` may be included for clarity/validation; in v1 they do not restrict enforcement—ALL alerting rules in listed groups are enforced.
-- On PUT, AKS validates each group exists and is readable; invalid/unauthorized IDs return clear 4xx errors.
-- Multiple groups supported (1–16); duplicates ignored. Policy alias example: `Microsoft.ContainerService/managedClusters/upgradeGates.prometheus.ruleGroupIds[*]`.
-
-Identity and RBAC
-- Runtime reads are performed using the cluster’s managed identity (AKS service identity) during upgrades.
-- Required permission: `Microsoft.AlertsManagement/prometheusRuleGroups/read` on each referenced rule group scope.
-- Validation on PUT checks existence and readability by the runtime identity; failures return 400 (invalid ID) or 403 (forbidden) with actionable diagnostics.
-
-Use case scenarios (Option 2 — profile + binding)
-This section shows the complete contract with requests and responses, and answers:
-- How customers provide alerts: create a reusable profile with ruleGroupIds (and optional ruleNames), then bind it on the cluster child.
-- How operators manage hundreds of clusters: enforce binding via Azure Policy/IaC; rotate/replace the profile to change org defaults fleet-wide without touching each cluster.
-- How customers see results and trace decisions: GET the child for live status/lastEvaluation/breaches with operationId/correlationId; GET evaluations/{upgradeRunId} for the full timeline; same via CLI/Portal.
-
-0) Get reusable profile (response)
-```http
-GET https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-shared/providers/Microsoft.ContainerService/upgradeGateProfiles/prod-defaults?api-version=2024-09-01
-
-HTTP/1.1 200 OK
-Content-Type: application/json
-{
-  "name": "prod-defaults",
-  "type": "Microsoft.ContainerService/upgradeGateProfiles",
-  "properties": {
-    "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
-    "actions": { "onBreach": "pause" },
-    "prometheus": {
-      "ruleGroupIds": [
-        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-monitor/providers/Microsoft.AlertsManagement/prometheusRuleGroups/slo-gates"
-      ],
-      "ruleNames": ["HighErrorRate", "P95LatencySpike"]
-    }
-  }
-}
-```
-
-1) Create reusable profile (request)
-```http
-PUT https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-shared/providers/Microsoft.ContainerService/upgradeGateProfiles/prod-defaults?api-version=2024-09-01
-Content-Type: application/json
-{
-  "properties": {
-    "evaluation": { "preflightMinutes": 10, "canaryMinutes": 20, "soakMinutes": 60, "consecutiveBreachesRequired": 2 },
-    "actions": { "onBreach": "pause" },
-    "prometheus": {
-      "ruleGroupIds": [
-        "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-monitor/providers/Microsoft.AlertsManagement/prometheusRuleGroups/slo-gates"
-      ],
-      "ruleNames": ["HighErrorRate", "P95LatencySpike"]
-    }
-  }
-}
-```
-
-2) Bind profile on cluster (request → response)
-```http
-PUT https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/cluster-a/upgradeGates/default?api-version=2024-09-01
-Content-Type: application/json
-{
-  "properties": {
-    "enabled": true,
-    "profile": {
-      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-shared/providers/Microsoft.ContainerService/upgradeGateProfiles/prod-defaults"
-    }
-  }
-}
-
-HTTP/1.1 200 OK
-Content-Type: application/json
-{
-  "name": "default",
-  "type": "Microsoft.ContainerService/managedClusters/upgradeGates",
-  "properties": {
-    "enabled": true,
-    "profile": {
-      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-shared/providers/Microsoft.ContainerService/upgradeGateProfiles/prod-defaults"
-    },
-    "status": { "phase": "idle", "decision": "n/a" }
-  }
-}
-```
-
-3) Start an upgrade (outside this contract) then check status (response includes upgrade operation IDs)
-```http
-GET https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/cluster-a/upgradeGates/default?api-version=2024-09-01
-
-HTTP/1.1 200 OK
-Content-Type: application/json
-{
-  "name": "default",
-  "type": "Microsoft.ContainerService/managedClusters/upgradeGates",
-  "properties": {
-    "enabled": true,
-    "profile": { "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-shared/providers/Microsoft.ContainerService/upgradeGateProfiles/prod-defaults" },
-    "status": {
-      "phase": "preflight",
-      "decision": "pause", 
-      "currentUpgradeRunId": "77777777-8888-9999-aaaa-bbbbbbbbbbbb",
-      "currentUpgradeRef": {
-        "operationId": "99999999-aaaa-bbbb-cccc-dddddddddddd",
-        "correlationId": "123e4567-e89b-12d3-a456-426614174000",
-        "scope": "agentPool",
-        "agentPool": "np1",
-        "requestedVersion": "1.30.3"
-      },
-      "lastEvaluation": {
-        "timestamp": "2025-08-14T09:05:00Z",
-        "ruleStatuses": [
-          { "ruleGroupId": "/subscriptions/000.../rg-monitor/providers/Microsoft.AlertsManagement/prometheusRuleGroups/slo-gates", "ruleName": "HighErrorRate", "firing": true,  "consecutiveCount": 2 },
-          { "ruleGroupId": "/subscriptions/000.../rg-monitor/providers/Microsoft.AlertsManagement/prometheusRuleGroups/slo-gates", "ruleName": "P95LatencySpike", "firing": false, "consecutiveCount": 0 }
-        ]
-      },
-      "breaches": [
-        {
-          "at": "2025-08-14T09:05:00Z",
-          "ruleGroupId": "/subscriptions/000.../rg-monitor/providers/Microsoft.AlertsManagement/prometheusRuleGroups/slo-gates",
-          "ruleName": "HighErrorRate",
-          "observed": 7.8,
-          "threshold": 5.0,
-          "phase": "preflight",
-          "action": "pause"
+Properties (shape)
+- Reusable Upgrade Gate schema (spec only)
+  properties:
+    evaluation:
+      preflightMinutes: integer // 0 disables preflight
+      canaryMinutes: integer // 0 disables canary
+      postUpgradeMinutes: integer // 0 disables post-upgrade monitoring
+      consecutiveBreachesRequired?: integer // default applied when a rule has no override
+    actions:
+      onBreach: string enum ["abort", "rollback"] // rollback applies to agent pools only; will fall back to abort if unsupported
+    prometheus:
+      ruleGroups: array of {
+        id: string // ARM ID of Microsoft.AlertsManagement/prometheusRuleGroups
+        rules?: array of {
+          name: string // rule name for identification
+          consecutiveBreachesRequired?: integer // per‑rule override (debounce)
         }
-      ]
+      }
+- Gate Reference schema (cluster child)
+  properties:
+    enabled: boolean
+    upgradeGate?: { id: string } // bind to reusable upgrade gate (preferred)
+    // inline spec: same shape as reusable (evaluation, actions, prometheus)
+    status (read‑only): {
+      phase: enum ["idle","preflight","canary","postUpgrade"]
+      decision: enum ["n/a","pending","proceed","abort","rollback"]
+      currentUpgradeSessionId: string
+      currentUpgradeRef: { operationId, correlationId, scope: enum ["agentPool","cluster"], agentPool?: string, requestedVersion: string }
+      breaches: [{ at, ruleGroupId, ruleName, observed, threshold, phase, action }]
+      updatedAt: RFC3339
+    }
+  evaluations (child, read‑only): keyed by upgradeSessionId with per‑phase decisions and breaches
+
+ARM operations (multiple named gates per cluster)
+- Child (cluster, per gate name):
+  - PUT /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/{gateName}?api-version=2024-09-01
+  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/{gateName}?api-version=2024-09-01
+  - DELETE /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/{gateName}?api-version=2024-09-01
+  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/{gateName}/evaluations?api-version=2024-09-01
+  - GET /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/{gateName}/evaluations/{upgradeSessionId}?api-version=2024-09-01
+- Reusable upgrade gates (spec only):
+  - PUT/GET/DELETE /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/upgradeGates/{gateName}?api-version=2024-09-01
+
+Prometheus Linkage
+- Provide full ARM IDs for rule groups in `prometheus.ruleGroups[].id`.
+- Optional `rules[].name` enables per‑rule overrides; unspecified rules inherit the gate‑level default.
+- Gate‑level `evaluation.consecutiveBreachesRequired` is optional debounce applied by the gate; it does not change alert sources. If you don’t want a rule to halt upgrades, tune it at source or override per‑rule here.
+
+Identity & RBAC
+- Runtime identity (cluster managed identity / AKS service identity) reads rule groups during evaluation.
+- Required permission on each referenced rule group scope: `Microsoft.AlertsManagement/prometheusRuleGroups/read`.
+- Validation on PUT checks existence/readability by the runtime identity; failures return 400 (invalid ID) or 403 (forbidden) with actionable diagnostics.
+
+Sample (request → response)
+- Bind a named gate reference to a reusable upgrade gate on a cluster
+
+```http
+PUT https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerService/managedClusters/{cluster}/upgradeGatesReferences/prod-slo?api-version=2024-09-01
+Content-Type: application/json
+{
+  "properties": {
+    "enabled": true,
+    "upgradeGate": {
+      "id": "/subscriptions/{sub}/resourceGroups/{rgShared}/providers/Microsoft.ContainerService/upgradeGates/prod-slo"
     }
   }
 }
-```
-
-4) Inspect the full timeline for this run
-```http
-GET https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.ContainerService/managedClusters/cluster-a/upgradeGates/default/evaluations/77777777-8888-9999-aaaa-bbbbbbbbbbbb?api-version=2024-09-01
 
 HTTP/1.1 200 OK
 Content-Type: application/json
 {
-  "name": "77777777-8888-9999-aaaa-bbbbbbbbbbbb",
-  "type": "Microsoft.ContainerService/managedClusters/upgradeGates/evaluations",
+  "name": "prod-slo",
+  "type": "Microsoft.ContainerService/managedClusters/upgradeGatesReferences",
   "properties": {
-    "startedAt": "2025-08-14T09:00:00Z",
-    "completedAt": null,
-    "upgradeRef": {
-      "operationId": "99999999-aaaa-bbbb-cccc-dddddddddddd",
-      "correlationId": "123e4567-e89b-12d3-a456-426614174000",
-      "scope": "agentPool",
-      "agentPool": "np1",
-      "requestedVersion": "1.30.3"
-    },
-    "phases": [
-      { "name": "preflight", "decision": "pause", "breaches": [ { "ruleGroupId": "/subscriptions/000.../slo-gates", "ruleName": "HighErrorRate", "observed": 7.8, "threshold": 5.0 } ] },
-      { "name": "canary", "decision": "pending", "breaches": [] },
-      { "name": "soak",   "decision": "pending", "breaches": [] }
-    ]
+    "enabled": true,
+    "upgradeGate": { "id": "/subscriptions/{sub}/resourceGroups/{rgShared}/providers/Microsoft.ContainerService/upgradeGates/prod-slo" },
+    "status": { "phase": "idle", "decision": "n/a" }
   }
 }
 ```
 
 ### CLI Experience
 
-Preferred (profile binding)
-- Create/Update (bind profile):
-  az aks upgrade-gates set -g {resourceGroupName} -n {clusterName} --profile-id "/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.ContainerService/upgradeGateProfiles/{profileName}" --enable true
-  - At scale: enforce profile binding via Azure Policy on the child path; rotate the profile to change defaults across fleets.
+Reusable upgrade gates (peer resource)
+- Create:
+  az aks upgrade-gates reusable create -g {rgShared} -n {gateName} --preflight 10 --canary 20 --post-upgrade 60 --consecutive 2 --action abort --prom-rule-group-ids "/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" --prom-rule-names HighErrorRate P95LatencySpike
+- Update:
+  az aks upgrade-gates reusable update -g {rgShared} -n {gateName} --action rollback
+- Show/Delete:
+  az aks upgrade-gates reusable show -g {rgShared} -n {gateName}
+  az aks upgrade-gates reusable delete -g {rgShared} -n {gateName}
 
-Alternate (inline)
-- Create/Update (inline signals):
-  az aks upgrade-gates set -g {resourceGroupName} -n {clusterName} --preflight 10 --canary 20 --soak 60 --consecutive 2 --action pause --prom-rule-group-ids "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" --prom-rule-names HighErrorRate P95LatencySpike
-
-Show current config + status:
-- az aks upgrade-gates show -g {resourceGroupName} -n {clusterName}
-+  az aks upgrade-gates show -g {resourceGroupName} -n {clusterName}
-
-List/Show evaluations:
-- az aks upgrade-gates evaluations list -g {resourceGroupName} -n {clusterName}
-- az aks upgrade-gates evaluations show -g {resourceGroupName} -n {clusterName} --run-id {upgradeRunId}
-+  az aks upgrade-gates evaluations list -g {resourceGroupName} -n {clusterName}
-+  az aks upgrade-gates evaluations show -g {resourceGroupName} -n {clusterName} --run-id {upgradeRunId}
-
-Delete config:
-- az aks upgrade-gates delete -g {resourceGroupName} -n {clusterName}
-+  az aks upgrade-gates delete -g {resourceGroupName} -n {clusterName}
+Cluster bindings (gate references on a cluster)
+- Bind to a reusable gate:
+  az aks upgrade-gates reference set -g {resourceGroupName} -n {clusterName} --gate {gateName} --gate-id "/subscriptions/{subscriptionId}/resourceGroups/{rgShared}/providers/Microsoft.ContainerService/upgradeGates/{gateName}" --enable true
+- Create/Update with inline spec:
+  az aks upgrade-gates reference set -g {resourceGroupName} -n {clusterName} --gate app-slo --enable true --preflight 10 --canary 20 --post-upgrade 60 --consecutive 2 --action abort --prom-rule-group-ids "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" --prom-rule-names HighErrorRate P95LatencySpike
+- List/Show current gate references:
+  az aks upgrade-gates reference list -g {resourceGroupName} -n {clusterName}
+  az aks upgrade-gates reference show -g {resourceGroupName} -n {clusterName} --gate {gateName}
+- List/Show evaluations for a gate:
+  az aks upgrade-gates evaluations list -g {resourceGroupName} -n {clusterName} --gate {gateName}
+  az aks upgrade-gates evaluations show -g {resourceGroupName} -n {clusterName} --gate {gateName} --session-id {upgradeSessionId}
+- Delete a gate reference:
+  az aks upgrade-gates reference delete -g {resourceGroupName} -n {clusterName} --gate {gateName}
 
 ### Portal Experience
 
-- Location: Cluster > Upgrades > Upgrade Gates (Preview)
-- Configure (child resource):
-  - Choose Profile (preferred) or Inline
-  - Enable
-  - If Profile: pick `upgradeGateProfiles/{profileName}` by ARM ID or selector
-  - If Inline: Preflight/Canary/Soak minutes; Consecutive breaches; Action (pause|abort); Managed Prometheus: select Rule Group (by Resource ID) and optionally rule names
-- Status panel (read-only):
-  - Current phase, decision, last evaluation ruleStatuses, breaches (if any)
-  - Shows bound profile name and ARM ID
-- Evaluations tab:
-  - List recent upgrade runs with per-phase decisions; open details for breach context
-  - Displays operationId and correlationId for end-to-end traceability; deep-links to the rule group where possible
-- Failure UX:
-  - Upgrade page shows banner with phase, rule, observed vs threshold, and action taken
+- Reusable Upgrade Gates (resource level): Create and manage `upgradeGates/{gateName}` under a subscription/resource group. Form fields: name, evaluation windows (preflight/canary/post-upgrade), on-breach action (abort or rollback), Managed Prometheus rule groups, and optional per-rule consecutive overrides.
+- Cluster Gate References (cluster level): Under a cluster’s Upgrade > Guardrails, manage `upgradeGatesReferences`. Add a gate by name, choose Bind to reusable gate (resource picker) or Inline configuration, toggle Enable, and save. Grid shows name, bound gate (if any), enablement, phase/decision, and last updated. Each row links to Evaluations history and diagnostics.
+- Note: Rollback during post-upgrade is only possible within the Blue/Green Nodepool Soak TTL; if post-upgrade minutes exceed TTL, breaches will abort.
+
+### Policy Experience
+
+- Built-ins to: (1) require ≥1 gate reference on production clusters, (2) restrict allowed `upgradeGates` IDs for binding, (3) constrain `actions.onBreach` (e.g., disallow rollback in prod), and (4) enforce minimum preflight/canary/post-upgrade minutes.
+- Aliases (illustrative):
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.enabled
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.upgradeGate.id
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.preflightMinutes
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.canaryMinutes
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.postUpgradeMinutes
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.actions.onBreach
 
 # Definition of Success
 
-## Expected Impact: Business, Customer, Technology
+## Expected Impact: Business, Customer, and Technology Outcomes, Experiments + Measures
 
 | No. | Outcome | Measure | Target | Priority |
-|-----|---------|---------|--------|---------|
-| 1 | Fewer upgrade‑induced incidents | Post‑upgrade Sev2+ tied to upgrades | -50% (6 months) | High |
-| 2 | Safer, faster upgrades | Upgrades without manual pause | +30% (2 quarters) | High |
-| 3 | Adoption | Prod clusters with guards configured | 70% (2 quarters) | High |
-| 4 | Decision latency | Guard decision loop P95 | ≤2 min | Medium |
+|-----|---------|---------|--------|----------|
+| 1 | Adoption in prod | % of prod clusters with ≥1 gate reference | ≥60% (Preview), ≥85% (GA) | P0 |
+| 2 | Safer upgrades | Safe-completion rate without escaped SLO breach | +30% uplift vs baseline | P0 |
+| 3 | Fast detection | Decision loop latency P95 | ≤2 minutes | P0 |
+| 4 | Signal quality | False-positive breach rate | ≤5% | P1 |
+| 5 | Auditability | % of upgrades with complete evaluations/breaches recorded | ≥99% | P1 |
 
 # Requirements
 
-## Functional Requirements (concise)
+## Functional Requirements
+
 | No. | Requirement | Priority |
 |-----|-------------|----------|
-| 1 | Cluster‑level child resource: upgradeGates (PUT/GET/DELETE) | High |
-| 2 | Managed Prometheus integration via ruleGroupIds | High |
-| 3 | Evaluation windows (preflight, canary, soak) + consecutive breach logic | High |
-| 4 | Actions: pause | abort | High |
-| 5 | Status surface on child resource; evaluations per upgrade run (LIST/GET) | High |
-| 6 | Policy/RBAC targeting the child resource | Medium |
+| 1 | Support multiple named `upgradeGatesReferences/{gateName}` per cluster | P0 |
+| 2 | Bind to reusable `upgradeGates/{gateName}` or supply inline spec | P0 |
+| 3 | Per-rule consecutive breach overrides with gate-level default | P0 |
+| 4 | Expose evaluations history per upgrade session and gate | P0 |
+| 5 | Fail-closed on telemetry unavailability with actionable diagnostics | P0 |
+| 6 | Azure Policy/RBAC targeting on child path | P0 |
+| 7 | Support post-upgrade phase with configurable minutes | P0 |
+| 8 | Support on-breach actions: abort (all scopes) and rollback (agent pools) with graceful fallback | P0 |
 
-## Test Requirements (concise)
+## Test Requirements
+
 | No. | Requirement | Priority |
 |-----|-------------|----------|
-| 1 | E2E: set/show/delete config; run upgrade; success path | High |
-| 2 | Breach path: trigger firing rule → pause/abort with correct diagnostics | High |
-| 3 | Scale: concurrent guarded upgrades across many clusters | High |
-| 4 | Validation: ruleGroupIds exist; responses include `ruleGroupId` with each referenced rule | High |
-| 5 | Resilience: fail‑closed behavior on transient errors/timeouts | High |
-
-# Dependencies and risks
-
-| No. | Requirement or Deliverable | Giver Team / Contact | Risk / Mitigation |
-|-----|----------------------------|----------------------|-------------------|
-| 1 | AlertsManagement Prometheus Rule Groups API (read-only) | Azure Monitor (Alerts/Prometheus) | API version drift; lock to preview api-version and add compat shims |
-| 2 | AKS CLI commands (upgrade-gates + evaluations) | AKS CLI | Schedule slip; ship via extension first, then merge to core |
-| 3 | Portal blade (Upgrade Gates + Evaluations) | AKS UX/Portal | Staged rollout; fall back to ARM/CLI if delayed |
-| 4 | Built-in Policy definitions + aliases | Azure Policy | Start with samples; add built-ins once aliases finalize |
-| 5 | RBAC read on rule groups | Customer tenancy | Validation + actionable diagnostics when permissions missing |
-| 6 | Upgrade engine decision loop scale/SLO | AKS Service | Capacity planning, backoff, circuit breakers; fail-closed to pause |
-| 7 | Optional rollback wiring to Blue/Green | AKS Blue/Green | Guardrails work without rollback; feature-flag coupling |
-
-# Compete
-
-## GKE
-- Strengths: mature upgrade workflows (surge, PDB-aware), maintenance windows/exclusions, strong fleet policy story. (Refs: [Surge upgrades](https://cloud.google.com/kubernetes-engine/docs/how-to/node-pool-upgrade#surge-upgrades), [Pod Disruption Budgets](https://cloud.google.com/kubernetes-engine/docs/how-to/pod-disruption-budgets), [Maintenance windows/exclusions](https://cloud.google.com/kubernetes-engine/docs/how-to/maintenance-windows-and-exclusions), [Fleet/Anthos overview](https://cloud.google.com/anthos/fleet-management/docs/overview))
-- Gap vs this feature: no first-class app SLO gating integrated into upgrade orchestration; customers wire Cloud Monitoring/Prometheus alerts via external CD gates.
-- Positioning: AKS integrates app SLO signals natively into the upgrade engine with queryable status and policyable config.
-
-## EKS
-- Strengths: managed node group upgrades with maxUnavailable, health checks; broad ecosystem integrations (Argo CD, Flux). (Refs: [Managed node group update behavior](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-update-behavior.html), [Update config: maxUnavailable](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html#managed-node-group-update-config), [Argo CD on EKS](https://www.eksworkshop.com/docs/gitops/argocd/), [Flux on EKS](https://fluxcd.io/docs/use-cases/gitops-eks/))
-- Gap vs this feature: no built-in app SLO gates in upgrade orchestration; typical pattern is CloudWatch/Prometheus alerts in pipelines/manual checks.
-- Positioning: AKS offers built-in, policy-governed SLO guardrails that pause/abort upgrades without bespoke pipelines.
+-| 1 | End-to-end canary breach pauses/aborts per action policy | P0 |
++| 1 | End-to-end canary breach aborts or rolls back per action policy | P0 |
+| 2 | Blue/green rollback within Nodepool Soak TTL triggers correctly | P0 |
+| 3 | RBAC/validation rejects unreadable rule group IDs | P0 |
+-| 4 | Evaluations/breaches are durable and queryable | P1 |
++| 4 | Evaluations/breaches are durable and queryable | P1 |
 
 # Appendix: FAQ
 
 - Why model this as a child resource instead of an inline cluster property?
   - Clear, queryable status (config + live state in one GET), first-class RBAC/policy targeting, independent lifecycle/versioning from the core cluster spec.
 
-- Why is it a singleton with a fixed name "default" (no custom name)?
-  - One source of truth per cluster avoids conflicting configs and name sprawl. A stable ARM path (/upgradeGates/default) makes RBAC, Policy aliases, CLI/Portal, and automation simple and consistent. It also reduces drift and eases DeployIfNotExists stamping of org defaults. If we add pool-level resources or reusable profiles later, the cluster-level default remains a single, predictable anchor.
+- Why support multiple named gates instead of a singleton?
+  - Separation of concerns (e.g., platform vs app SLOs), incremental rollout by domain, and reuse of shared gates without forcing all signals into one gate. Policy can still constrain allowed names/ids to prevent sprawl.
 
 - Can I target specific alert rules within a rule group?
   - Not in v1. All alerting rules in the provided rule groups are enforced. Use granular rule groups to scope if needed.
@@ -484,27 +455,43 @@ Delete config:
   - Adoption (~48% of clusters), lowest integration/identity complexity, fastest path to value. We can add Azure Monitor alerts and self‑hosted endpoints in later phases.
 
 - Does this gate control plane upgrades?
-  - Control plane honors pause-only semantics; no rollback. Agent pool upgrades can optionally rollback when Blue/Green is enabled.
+  - Control plane honors abort-only semantics; no rollback. Agent pool upgrades can optionally rollback when Blue/Green is enabled.
 
 - How do you reduce false positives/noise?
-  - Consecutive breach counts, warm-up suppression in preflight, debounce windows, and explicit customer-selected signals.
+  - Consecutive breach counts, warm‑up suppression in preflight, debounce windows, and explicit customer-selected signals.
+  
+- What should I do if a noisy alert keeps blocking upgrades?
+  - a) Reconfigure the Prometheus alert appropriately (e.g., adjust thresholds, duration/for, lookback, labels/routing) to better reflect SLO intent.
+  - b) Remove the alert from the gate’s inputs by updating API references: stop referencing the rule group containing that alert, or split it into a granular rule group not referenced by the gate, then update the gate reference accordingly.
 
 - What happens if the rule group API is temporarily unavailable?
-  - Fail-closed to pause with diagnostics; customers can retry once availability is restored.
+  - Fail-closed to abort with diagnostics; customers can retry once availability is restored.
 
 - How do I find the rule group resource ID safely?
   - Copy from the rule group’s JSON in Portal/ARM. Use placeholders in docs. Provide full ARM IDs in automation (Policy/CLI/IaC).
 
 - Can I reuse one guard configuration across many clusters?
-  - Yes. Use `Microsoft.ContainerService/upgradeGateProfiles/{profileName}` and bind clusters via `properties.profile.id` on the child resource (preferred).
+  - Yes. Author a reusable `Microsoft.ContainerService/upgradeGates/{gateName}` and bind clusters via the child `upgradeGatesReferences/{gateName}` with `properties.upgradeGate.id`.
 
 - Does this replace blue/green upgrades?
-  - No. It complements them by adding app SLO gating to canary/soak phases and optional rollback.
+  - No. It complements them by adding app SLO gating to preflight/canary/post‑upgrade phases and optional rollback.
 
 - Why have "breaches" in addition to "evaluations"?
   - Evaluations are periodic snapshots of rule status per phase used to drive the gate; breaches are immutable events recorded when a gating condition is met (after debounce/consecutive counts), including observed vs threshold and action.
-  - Breaches provide durable auditability even if the alert clears by the next evaluation; they show exactly what triggered pause/abort with timestamps and upgrade identifiers.
-  - Breaches are compact and queryable for automation/compliance (e.g., "did any breach occur in run X?"), whereas evaluations can be numerous and transient.
+  - Breaches provide durable auditability even if the alert clears by the next evaluation; they show exactly what triggered abort/rollback with timestamps and upgrade identifiers.
+  - Breaches are compact and queryable for automation/compliance (e.g., "did any breach occur in session X?"), whereas evaluations can be numerous and transient.
   - Breaches capture fail-closed cases (e.g., telemetry outage) as synthetic events with a reason; evaluations may be absent or partial in such cases.
   - UX separation: surface breaches in summary banners; use the evaluations timeline for deep-dive analysis.
+
+- How does this relate to Fleet and Service Fabric upgrade gates?
+  - Fleet Manager: Fleet provides orchestration and policy at fleet scope. Our gates focus on per-cluster upgrade safety with ARM‑first governance; reusable gates enable fleet‑wide consistency without cross‑cluster orchestration.
+    - References: [Azure Kubernetes Fleet Manager documentation](https://learn.microsoft.com/azure/kubernetes-fleet/), [Overview](https://learn.microsoft.com/azure/kubernetes-fleet/overview)
+  - Service Fabric: Similar gate concept (named gates, per‑rule semantics, durable events) but AKS surfaces gates as ARM child resources with Managed Prometheus integration and Kubernetes‑specific phases (preflight/canary with soak handled outside the gate).
+    - References: [Service Fabric application upgrades](https://learn.microsoft.com/azure/service-fabric/service-fabric-application-upgrade), [Service Fabric cluster upgrades](https://learn.microsoft.com/azure/service-fabric/service-fabric-cluster-upgrade)
+
+- How do gates interact with node and nodepool soak?
+  - Separation of concerns: Soak controls pacing; gates control safety. There are no soak knobs in the gate API.
+  - Rolling agent pools: Per-node Node Soak is configured on the upgrade engine and only affects speed; gate decisions are independent.
+  - Blue/Green: Nodepool Soak TTL bounds rollback. Post-upgrade monitoring can exceed TTL, but after TTL any breach will abort even if action=rollback. For rollback coverage, set post-upgrade minutes ≤ TTL.
+  - Control plane: No rollback. Gates still evaluate preflight/post-upgrade (canary optional or 0); any configured rollback falls back to abort.
 
