@@ -179,6 +179,91 @@ Soak vs Gate (concise)
 
 ## User Experience 
 
+### Sequence: Upgrade phases and gates
+The diagram shows where gates evaluate during preflight, canary, and post-upgrade, and when abort/rollback decisions apply.
+
+```mermaid
+%%{init: {"theme":"default", "themeVariables": { "noteBkgColor": "#fffbe6", "noteTextColor": "#111", "actorTextColor": "#111", "signalTextColor": "#111", "lineColor": "#333" }}}%%
+sequenceDiagram
+  autonumber
+  actor U as Operator/Policy
+  participant E as AKS Upgrade Engine
+  participant G as Upgrade Gate
+  participant P as Managed Prometheus
+  participant S as Scope (Agent Pool/Control Plane)
+
+  U->>E: Start upgrade (create upgradeSessionId)
+  E->>G: Initialize gate
+  G->>P: Snapshot rule groups
+  Note over G: SIGNALS SNAPSHOTTED AT SESSION START
+
+  rect rgb(240,248,255)
+    Note over E: PHASE: PREFLIGHT
+    loop Evaluate preflight
+      E->>G: Evaluate
+      G->>P: Read signals
+      alt Breach
+        G-->>E: decision=abort|rollback
+        alt Agent pool rollback supported
+          E-->>S: Rollback
+        else
+          E-->>S: Abort
+        end
+        E-->>U: Report failure
+      else Healthy
+        G-->>E: decision=proceed
+      end
+    end
+  end
+
+  rect rgb(235,255,235)
+    Note over E: PHASE: CANARY
+    loop Evaluate canary
+      E->>S: Upgrade canary slice / pre-cutover
+      E->>G: Evaluate
+      G->>P: Read signals
+      alt Breach
+        G-->>E: decision=abort|rollback
+        alt Agent pool rollback available
+          E-->>S: Rollback canary changes
+        else
+          E-->>S: Abort
+        end
+        E-->>U: Report failure
+      else Healthy
+        G-->>E: decision=proceed
+      end
+    end
+  end
+
+  alt Blue/Green rollout
+    E->>S: Cutover Blue -> Green
+  else Rolling rollout
+    E->>S: Continue rollout
+  end
+
+  rect rgb(255,248,235)
+    Note over E: PHASE: POST-UPGRADE
+    loop Evaluate postUpgrade
+      E->>G: Evaluate
+      G->>P: Read signals
+      alt Breach
+        G-->>E: decision=abort|rollback
+        alt Agent pool rollback within soak TTL
+          E-->>S: Rollback to Blue/prior state
+        else
+          E-->>S: Abort
+        end
+        E-->>U: Report failure
+      else Healthy
+        G-->>E: decision=proceed
+      end
+    end
+  end
+
+  E-->>U: Upgrade complete
+```
+
 ### Operator Journeys (Scenarios)
 - Manual vs Auto Upgrades
   - Manual: Operator triggers upgrade; gate evaluates preflight, canary, and post-upgrade. On breach, upgrade aborts or rolls back (agent pools) per configuration; operator reviews diagnostics to decide next steps.
