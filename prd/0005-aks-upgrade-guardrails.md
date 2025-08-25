@@ -1,10 +1,10 @@
 ---
 title: AKS Upgrade Guardrails: SLO‑Gated, Metric‑Aware Upgrades
 wiki: ""
-pm-owners: [kaarthis]
+pm-owners: [kaarthis, Shashank]
 feature-leads: []
 authors: [kaarthis]
-stakeholders: []
+stakeholders: [Simon Stephane Wenjun Yi Liqian Jorge]
 approved-by: []
 status: Draft
 last-updated: 2025-08-13
@@ -16,13 +16,13 @@ Before this feature, AKS customers had to hand‑craft blue/green flows and stit
 
 ## Problem Statement / Motivation
 
-AKS upgrades validate readiness signals (PDBs, probes, API breaks) but miss nuanced, post‑upgrade degradations that do not flip pod readiness immediately: latency regressions, error‑rate spikes, delayed OOMs after node moves, and cascading issues that surface over time. Customers either run quasi‑manual blue/green orchestrations with custom gates or rely on AKS Blue/Green nodepool upgrades rolling out later this year, which simplify cutover but are nodepool‑only and do not evaluate application SLO signals. Many lack the platform automation and observability maturity to do this reliably. We need upgrade‑integrated mechanisms to detect these problems and stop the operation.
+AKS validates readiness (PDBs, quota, API breaks) but misses nuanced or delayed post‑upgrade degradations. For many, an upgrade feels like an atomic, black‑box operation with limited control. In Rolling nodepool upgrades, operators must watch their own metrics and manually time an abort with higher toil and risk. The upcoming Blue/Green flow adds soak and batch drain/cutover mechanics, but it still lacks metrics‑based intervention; there are no first‑class gates to automate proceed/abort/rollback. The gap: upgrade‑integrated, SLO‑aware guardrails.
 
-Examples observed:
-- Added application latency after an upgrade
-- Increased error rate after version/image change
-- Pods crashing/oomkilling minutes or hours after moving to upgraded nodes
-- Cascading issues that manifest progressively across components
+Example problems observed during/after upgrade:
+- Latency regressions after upgrade
+- Error‑rate spikes after version/image changes
+- Pods crashing/oomkilling minutes or hours after node moves
+- Cascading issues that surface progressively across components
 
 ## Goals/Non-Goals
 
@@ -38,6 +38,7 @@ Examples observed:
 - Node pool coverage for VMSS and VM-based pools; control plane is abort-only (no rollback)
 - Reuse across services: same gate model applicable to AKS agent pool upgrades and Managed Mesh upgrades
 - Separation of pace (soak) and safety (gates): Node/Nodepool soak lives in the upgrade engine; gates evaluate independently. In Blue/Green, rollback is only possible within the Nodepool Soak TTL; beyond TTL, breaches abort. Control plane remains abort-only.
+- Canary clarity tied to batch size: Rolling uses MaxSurge as batch size; Blue/Green uses drainBatchSize as batch size. Gates support time-based canary or per-batch evaluation of the first N batches.
 
 - Declare SLO guardrails via existing monitoring investments:
   - Prometheus (Azure Managed Prometheus rule groups)
@@ -105,6 +106,182 @@ Business Impact / OKR Alignment:
 - 3P CD systems with health gates (not integrated into AKS upgrade engine)
 - Gaps: fragmentation, high ops cost, no uniform governance, inconsistent quality
 
+## Expected Upgrade Sequences (sequence diagrams)
+
+Legend
+- Checks = SLO evaluations (preflight, canary/during, post-upgrade)
+- Actions: proceed, abort (control plane), rollback (agent pools)
+- Ops: Surge/Drain/Upgrade/Uncordon, Batch Soak, Nodepool Soak
+
+### Control Plane (abort only)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UE as Upgrade Engine
+  participant G as Upgrade Gate
+  participant MP as Managed Prometheus
+  participant CP as Control Plane
+
+  UE->>G: Start upgrade session
+
+  Note over UE: Preflight (Before‑Upgrade Check)
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=abort
+    UE-->>CP: Stop upgrade
+    UE-->>G: Session end
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Control Plane Upgrade
+  UE->>CP: Perform control plane upgrade
+
+  Note over UE: During‑Upgrade (short stabilization)
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=abort (rollback unsupported)
+    UE-->>CP: Abort
+    UE-->>G: Session end
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Post‑Upgrade (After‑Upgrade Check)
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=abort
+    UE-->>CP: Abort
+  else Healthy
+    G-->>UE: decision=proceed
+    UE-->>G: Done
+  end
+```
+
+### Rolling Agent Pool (1 node, maxSurge=1)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UE as Upgrade Engine
+  participant G as Upgrade Gate
+  participant MP as Managed Prometheus
+  participant NP as Agent Pool
+  participant N as Existing Node
+  participant S as Surge Node
+
+  UE->>G: Start upgrade session
+
+  Note over UE: Preflight
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=abort
+    UE-->>NP: Stop upgrade
+    UE-->>G: Session end
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Batch 1 (MaxSurge=1, batchNodes=1)
+  UE->>NP: Create surge node S (+1 capacity)
+  UE->>N: Cordon + Drain
+  UE->>S: Schedule workloads from N
+  UE->>N: Reimage/Upgrade
+  UE->>N: Uncordon
+
+  Note over UE: During‑Upgrade Check
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    alt rollback supported
+      G-->>UE: decision=rollback
+      UE-->>NP: Roll back upgraded nodes
+      UE-->>NP: Remove surge node S
+      UE-->>G: Session end
+    else rollback unsupported/not configured
+      G-->>UE: decision=abort
+      UE-->>NP: Abort run
+      UE-->>NP: Remove surge node S
+    end
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Post‑Upgrade
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    alt rollback supported
+      G-->>UE: decision=rollback
+      UE-->>NP: Roll back upgraded node
+    else
+      G-->>UE: decision=abort
+      UE-->>NP: Abort
+    end
+  else Healthy
+    G-->>UE: decision=proceed
+    UE->>NP: Remove surge node S (scale back)
+    UE-->>G: Done
+  end
+```
+
+### Blue/Green Agent Pool (1 blue node, 1 green node, MaxSurge=100%, drainBatchSize=1)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UE as Upgrade Engine
+  participant G as Upgrade Gate
+  participant MP as Managed Prometheus
+  participant Blue1 as Blue Node
+  participant Green1 as Green Node
+
+  UE->>G: Start upgrade session
+
+  Note over UE: Preflight
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=abort
+    UE-->>G: Session end
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Provision Green (surge capacity)
+  UE->>Green1: Create 1 node (surged)
+
+  Note over UE: Canary (per batch - batchNodes=1 - drainBatchSize=1)
+  UE->>Blue1: Cordon + Drain 1
+  UE->>Green1: Schedule drained workloads
+  UE->>Green1: Batch soak
+  G->>MP: Evaluate SLOs
+  alt SLO breach
+    G-->>UE: decision=rollback (pre‑cutover)
+    UE-->>Blue1: Keep traffic on Blue1
+  else Healthy
+    G-->>UE: decision=proceed
+  end
+
+  Note over UE: Cutover
+  UE->>Blue1: Complete drain
+  UE->>Green1: All workloads on Green1
+
+  Note over UE: Post‑Upgrade (Nodepool Soak Window)
+  G->>MP: Evaluate SLOs during soak
+  alt Breach within Soak TTL
+    G-->>UE: decision=rollback
+    UE-->>Blue1: Roll back traffic to Blue1
+  else
+    alt Breach after Soak TTL
+      G-->>UE: decision=abort
+      UE-->>Green1: Abort further actions
+    else Healthy
+      G-->>UE: decision=proceed
+      UE->>Blue1: Decommission Blue1
+      UE-->>G: Done
+    end
+  end
+```
+
 ## What will the announcement look like?
 
 Announcing SLO‑Gated, Metric‑Aware Upgrades for AKS
@@ -155,7 +332,7 @@ Security posture: Platform-native integration; no customer-managed endpoints or 
 
 Soak vs Gate (concise)
 - Rolling agent pools: Node Soak (inter-node delay) remains an upgrade engine setting and does not appear in the gate API; gates still run preflight/canary/post-upgrade on their timers.
-- Blue/Green: Nodepool Soak TTL bounds rollback. Gates can monitor longer, but after TTL, breaches result in abort even if action=rollback.
+- Blue/Green: Nodepool Soak TTL bounds rollback. Gates can monitor longer, but after TTL, any breach will abort even if action=rollback.
 - Control plane: Same gate schema; rollback unsupported. Canary may effectively be 0 (or a short stabilization window).
 
 ## Observability & Troubleshooting Experience
@@ -179,90 +356,32 @@ Soak vs Gate (concise)
 
 ## User Experience 
 
-### Sequence: Upgrade phases and gates
-The diagram shows where gates evaluate during preflight, canary, and post-upgrade, and when abort/rollback decisions apply.
+### Phases and batch sizing (clarification)
+- Preflight
+  - Validates baseline application and platform health before any changes are applied.
+  - Reads existing SLO signals without modifying capacity.
+  - Outcome: proceed or stop.
 
-```mermaid
-%%{init: {"theme":"default", "themeVariables": { "noteBkgColor": "#fffbe6", "noteTextColor": "#111", "actorTextColor": "#111", "signalTextColor": "#111", "lineColor": "#333" }}}%%
-sequenceDiagram
-  autonumber
-  actor U as Operator/Policy
-  participant E as AKS Upgrade Engine
-  participant G as Upgrade Gate
-  participant P as Managed Prometheus
-  participant S as Scope (Agent Pool/Control Plane)
+- Canary
+  - Evaluates an explicit early slice to catch regressions before broad exposure.
+    - Batch definition by strategy:
+      - Rolling: a batch equals the MaxSurge set processed together.
+      - Blue/Green: a batch equals the drainBatchSize drained from Blue and prepared on Green.
+    - Modes:
+      - Time-based: after the first batch, observe for canaryMinutes before proceeding.
+      - Per-batch: gate the first N batches; pause at each batch boundary for canaryMinutes.
+    - Outcome: proceed, abort, or rollback (agent pools) when supported; in Blue/Green, rollback is honored only within the Nodepool Soak TTL, otherwise abort.
 
-  U->>E: Start upgrade (create upgradeSessionId)
-  E->>G: Initialize gate
-  G->>P: Snapshot rule groups
-  Note over G: SIGNALS SNAPSHOTTED AT SESSION START
+- Post-upgrade
+  - Observes the system after rollout/cutover to catch delayed failures (e.g., latency, errors, memory).
+  - In blue/green, rollback is only possible within the configured soak period; beyond that, breaches stop the run.
+  - Control plane is stop-only (no rollback).
 
-  rect rgb(240,248,255)
-    Note over E: PHASE: PREFLIGHT
-    loop Evaluate preflight
-      E->>G: Evaluate
-      G->>P: Read signals
-      alt Breach
-        G-->>E: decision=abort|rollback
-        alt Agent pool rollback supported
-          E-->>S: Rollback
-        else
-          E-->>S: Abort
-        end
-        E-->>U: Report failure
-      else Healthy
-        G-->>E: decision=proceed
-      end
-    end
-  end
+- Operator guidance
+  - Use minimal but meaningful observation windows; adjust as signal quality proves out.
+  - Target only SLO-critical alerts to reduce noise.
+  - Apply debounce/consecutive-breach patterns and tune alerts at the source when needed.
 
-  rect rgb(235,255,235)
-    Note over E: PHASE: CANARY
-    loop Evaluate canary
-      E->>S: Upgrade canary slice / pre-cutover
-      E->>G: Evaluate
-      G->>P: Read signals
-      alt Breach
-        G-->>E: decision=abort|rollback
-        alt Agent pool rollback available
-          E-->>S: Rollback canary changes
-        else
-          E-->>S: Abort
-        end
-        E-->>U: Report failure
-      else Healthy
-        G-->>E: decision=proceed
-      end
-    end
-  end
-
-  alt Blue/Green rollout
-    E->>S: Cutover Blue -> Green
-  else Rolling rollout
-    E->>S: Continue rollout
-  end
-
-  rect rgb(255,248,235)
-    Note over E: PHASE: POST-UPGRADE
-    loop Evaluate postUpgrade
-      E->>G: Evaluate
-      G->>P: Read signals
-      alt Breach
-        G-->>E: decision=abort|rollback
-        alt Agent pool rollback within soak TTL
-          E-->>S: Rollback to Blue/prior state
-        else
-          E-->>S: Abort
-        end
-        E-->>U: Report failure
-      else Healthy
-        G-->>E: decision=proceed
-      end
-    end
-  end
-
-  E-->>U: Upgrade complete
-```
 
 ### Operator Journeys (Scenarios)
 - Manual vs Auto Upgrades
@@ -345,6 +464,12 @@ Concepts (concise)
 - Upgrade Gate Reference (cluster child): `managedClusters/{cluster}/upgradeGatesReferences/{gateName}` holds enablement, optional inline spec or binding, live status, and per‑session evaluations.
 - Reusable Upgrade Gate (peer resource): `upgradeGates/{gateName}` is authored once and bound by many clusters; spec only, no status.
 - Evaluation: Per‑session, per‑phase decision record captured under the child; separate from immutable Breach events.
+- Batch definition for canary clarity:
+  - Rolling: a batch equals the MaxSurge-sized set processed together by the upgrade engine.
+  - Blue/Green: a batch equals the drainBatchSize-sized set drained from Blue and prepared on Green.
+- Canary modes:
+  - Time-based: a single canary observation window after the first batch.
+  - Per-batch: evaluate at each batch boundary for N initial batches before proceeding at normal cadence.
 
 Property rationale (Why)
 - Upgrade Gate Reference (child): Cluster-scoped enable/disable and status live with the cluster, enabling Policy/RBAC targeting and localized state without mutating the reusable spec.
@@ -353,6 +478,9 @@ Property rationale (Why)
 - upgradeGate.id vs inline: Bind to reuse shared policy; inline for cluster-specific needs or experimentation. Both use the same schema to simplify tooling.
 - evaluation.preflightMinutes: Timebox pre-upgrade checks to catch regressions early (before touching capacity); 0 disables if not needed.
 - evaluation.canaryMinutes: Observe a small early slice to detect issues before full rollout; 0 disables when canary is impractical.
+- evaluation.canaryMode: "time" for a single window or "perBatch" to gate N initial batches drained from Blue and prepared on Green.
+- evaluation.canaryBatches: Number of initial batches to gate individually when canaryMode=perBatch; 0 disables per-batch gating.
+- evaluation.canaryMinutes (by mode): time-based = total canary window after first batch; per-batch = pause/evaluation duration per batch.
 - evaluation.postUpgradeMinutes: Monitor after upgrade/cutover to detect delayed issues; 0 disables when post monitoring is not needed. For blue/green, aligns with Nodepool Soak TTL. Rollback is only possible within the Blue/Green Nodepool Soak TTL; beyond TTL, breaches result in abort even if action=rollback.
 - evaluation.consecutiveBreachesRequired: Debounce noisy signals; gate-level default applies when a rule has no explicit override.
 - actions.onBreach: Operator intent on breach—abort, or rollback (agent pools only). If set to rollback on unsupported scope (e.g., control plane), the service aborts. In Blue/Green, rollback is honored only within the Nodepool Soak TTL; outside TTL, the action falls back to abort.
@@ -369,7 +497,9 @@ Properties (shape)
   properties:
     evaluation:
       preflightMinutes: integer // 0 disables preflight
-      canaryMinutes: integer // 0 disables canary
+      canaryMode?: string enum ["time","perBatch"] // default: "time"
+      canaryBatches?: integer // when perBatch, number of initial batches to gate
+      canaryMinutes: integer // 0 disables canary (time: total window; perBatch: per-batch window)
       postUpgradeMinutes: integer // 0 disables post-upgrade monitoring
       consecutiveBreachesRequired?: integer // default applied when a rule has no override
     actions:
@@ -470,6 +600,16 @@ Cluster bindings (gate references on a cluster)
 - Delete a gate reference:
   az aks upgrade-gates reference delete -g {resourceGroupName} -n {clusterName} --gate {gateName}
 
+New/updated flags
+- --canary-mode {time|per-batch}
+- --canary-batches <int>
+
+Examples (reusable)
+- az aks upgrade-gates reusable create -g {rgShared} -n {gateName} --preflight 10 --canary 20 --canary-mode per-batch --canary-batches 2 --post-upgrade 60 --consecutive 2 --action abort --prom-rule-group-ids "/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" --prom-rule-names HighErrorRate P95LatencySpike
+
+Examples (reference inline)
+- az aks upgrade-gates reference set -g {rg} -n {cluster} --gate app-slo --enable true --preflight 10 --canary 20 --canary-mode per-batch --canary-batches 3 --post-upgrade 60 --consecutive 2 --action abort --prom-rule-group-ids "/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.AlertsManagement/prometheusRuleGroups/{ruleGroupName}" --prom-rule-names HighErrorRate P95LatencySpike
+
 ### Portal Experience
 
 - Reusable Upgrade Gates (resource level): Create and manage `upgradeGates/{gateName}` under a subscription/resource group. Form fields: name, evaluation windows (preflight/canary/post-upgrade), on-breach action (abort or rollback), Managed Prometheus rule groups, and optional per-rule consecutive overrides.
@@ -477,7 +617,6 @@ Cluster bindings (gate references on a cluster)
 - Note: Rollback during post-upgrade is only possible within the Blue/Green Nodepool Soak TTL; if post-upgrade minutes exceed TTL, breaches will abort.
 
 ### Policy Experience
-
 - Built-ins to: (1) require ≥1 gate reference on production clusters, (2) restrict allowed `upgradeGates` IDs for binding, (3) constrain `actions.onBreach` (e.g., disallow rollback in prod), and (4) enforce minimum preflight/canary/post-upgrade minutes.
 - Aliases (illustrative):
   - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.enabled
@@ -486,6 +625,8 @@ Cluster bindings (gate references on a cluster)
   - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.canaryMinutes
   - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.postUpgradeMinutes
   - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.actions.onBreach
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.canaryMode
+  - Microsoft.ContainerService/managedClusters/upgradeGatesReferences[*].properties.evaluation.canaryBatches
 
 # Definition of Success
 
@@ -513,6 +654,7 @@ Cluster bindings (gate references on a cluster)
 | 6 | Azure Policy/RBAC targeting on child path | P0 |
 | 7 | Support post-upgrade phase with configurable minutes | P0 |
 | 8 | Support on-breach actions: abort (all scopes) and rollback (agent pools) with graceful fallback | P0 |
+| 9 | Support per-batch canary gating aligned with MaxSurge (Rolling) and drainBatchSize (Blue/Green) | P0 |
 
 ## Test Requirements
 
@@ -524,6 +666,7 @@ Cluster bindings (gate references on a cluster)
 | 3 | RBAC/validation rejects unreadable rule group IDs | P0 |
 -| 4 | Evaluations/breaches are durable and queryable | P1 |
 +| 4 | Evaluations/breaches are durable and queryable | P1 |
+| 5 | Per-batch canary pauses and evaluates at batch boundaries (first N batches) | P0 |
 
 # Appendix: FAQ
 
@@ -579,4 +722,6 @@ Cluster bindings (gate references on a cluster)
   - Rolling agent pools: Per-node Node Soak is configured on the upgrade engine and only affects speed; gate decisions are independent.
   - Blue/Green: Nodepool Soak TTL bounds rollback. Post-upgrade monitoring can exceed TTL, but after TTL any breach will abort even if action=rollback. For rollback coverage, set post-upgrade minutes ≤ TTL.
   - Control plane: No rollback. Gates still evaluate preflight/post-upgrade (canary optional or 0); any configured rollback falls back to abort.
+
+
 
