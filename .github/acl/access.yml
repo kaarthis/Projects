@@ -12,6 +12,8 @@ configuration:
     role: Maintain
   - member: qike
     role: Maintain
+  - member: jpalma
+    role: Maintain
   # Azure Container Service - CG-Read Write
   - team: "rrd-read write-rg-22938"
     role: Push
@@ -24,3 +26,4 @@ configuration:
     role: Push
   - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
     role: Push
+
