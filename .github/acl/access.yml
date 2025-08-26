@@ -19,11 +19,11 @@ configuration:
     role: Write
  #  - team: RCG-Read Write-CG-23637
  #   role: Write
- - team: "rrd-read only-rg-22937"
-   role: Read
+  - team: "rrd-read only-rg-22937"
+    role: Read
  # Azure Container Service - Approver
- - team: rrd-acsappr-25810
-   role: Maintain
+  - team: rrd-acsappr-25810
+    role: Maintain
   # Azure Container Service - NTDEV CG-Read Write
   - team: "azurecontainerservice-rg-readwritentdev-8295"
     role: Write
