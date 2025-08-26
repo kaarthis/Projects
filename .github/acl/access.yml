@@ -17,8 +17,8 @@ configuration:
   # Azure Container Service - CG-Read Write
   - team: "rrd-read write-rg-22938"
     role: Write
- #  - team: RCG-Read Write-CG-23637
- #   role: Write
+  - team: "RCG-Read Write-CG-23637"
+    role: Write
   - team: "rrd-read only-rg-22937"
     role: Read
  # Azure Container Service - Approver
