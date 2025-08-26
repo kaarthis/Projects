@@ -31,4 +31,6 @@ configuration:
     role: Push
   - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
     role: Push
-
+   # AKS PM SG
+  - team: akspm
+    role: Write
