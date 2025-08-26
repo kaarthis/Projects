@@ -8,8 +8,8 @@ configuration:
   manageAccess:
   - member: jpang
     role: Maintain
-  - team: qi-lt
-    role: Maintain
+#  - team: qi-lt
+#   role: Maintain
   - member: qike
     role: Maintain
   - member: jpalma
