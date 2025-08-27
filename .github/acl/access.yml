@@ -6,31 +6,31 @@ resource: repository
 where:
 configuration:
   manageAccess:
-  - member: jpang
-    role: Maintain
-#  - team: qi-lt
-#   role: Maintain
-  - member: qike
-    role: Maintain
-  - member: jpalma
-    role: Maintain
-  # Azure Container Service - CG-Read Write
-  - team: "rrd-read write-rg-22938"
-    role: Write
-  - team: "RCG-Read Write-CG-23637"
-    role: Write
-  - team: "rrd-read only-rg-22937"
-    role: Read
- # Azure Container Service - Approver
-  - team: rrd-acsappr-25810
-    role: Maintain
-  # Azure Container Service - NTDEV CG-Read Write
-  - team: "azurecontainerservice-rg-readwritentdev-8295"
-    role: Write
-  - team: RAM_37c20f81-6ff2-4c2a-8fee-00c1b3324bf5
-    role: Push
-  - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
-    role: Push
-   # AKS PM SG
-  - team: akspm
-    role: Push
+    - member: jpang
+      role: Maintain
+    #  - team: qi-lt
+    #   role: Maintain
+    - member: qike
+      role: Maintain
+    - member: jpalma
+      role: Maintain
+    # Azure Container Service - CG-Read Write
+    - team: "rrd-read write-rg-22938"
+      role: Write
+    # - team: "RCG-Read Write-CG-23637"
+    #   role: Write
+    - team: "rrd-read only-rg-22937"
+      role: Read
+    # Azure Container Service - Approver
+    - team: rrd-acsappr-25810
+      role: Maintain
+    # Azure Container Service - NTDEV CG-Read Write
+    - team: "azurecontainerservice-rg-readwritentdev-8295"
+      role: Write
+    - team: RAM_37c20f81-6ff2-4c2a-8fee-00c1b3324bf5
+      role: Push
+    - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
+      role: Push
+      # AKS PM SG
+    - team: akspm
+      role: Push
