@@ -65,7 +65,23 @@ These issues result in:
 - Aligns with OKR [Enable AKS to make promises about workload SLOs](https://dev.azure.com/msazure/CloudNativeCompute/_workitems/edit/29497624).
 - Upgrade CSAT score dropped to 160 in CY25, highlighting the need to boost customer satisfaction.
 
-Outages due to unintended breaking changes coming from AKS releases --
+- Large enterprises across telecom, financial services, and healthcare (e.g., AT&T, BlackRock, Kaiser, Epic) have experienced unintended maintenance-triggered disruptions; because many do not use Azure Kubernetes Fleet Manager yet operate multiple clusters, they need reusable, centrally managed maintenance configurations.
+
+### Customer signals and support volume
+
+- In CY25, AKS is averaging 3–5 support cases per month where customers ask why upgrades did not occur inside their planned maintenance windows or happened outside them.
+- Anecdotally, customers are unclear on how to configure and interpret maintenance windows; for example, see [Incident 660151968 (IcM)](https://portal.microsofticm.com/imp/v5/incidents/details/660151968/summary).
+
+| Incident ID       | Summary                                                | Customer symptom/ask                                                                                                                                                                                                                                                                         | Category (SAP path)                                                                                                                                                                  |
+|-------------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 2412020040015869  | [Azure Government] Availability drop outside window    | Availability drop observed outside the configured maintenance window.                                                                                                                                                                                                                        | Azure/Kubernetes Service (AKS)/Connectivity/Cannot connect to application hosted on AKS cluster (Ingress)                                                                           |
+| 2502250050003435  | {ADDRESSPII} OS SecurityPatch upgrades not applied     | Enabled node OS image SecurityPatch channel and configured a maintenance window; no image upgrades observed across node pools; lacks diagnostics to verify whether auto-upgrade is working; requests guidance on debugging.                                                                  | Azure/Kubernetes Service (AKS)/Create, Upgrade, Scale and Delete operations (cluster or nodepool)/Upgrading the cluster or nodepool                                                 |
+| 2504180060004082  | {ALPHANUMERICPII}                                      | Cluster has auto-upgrade enabled for OS image and AKS patch version; asks how to configure maintenance windows to run monthly instead of weekly.                                                                                                                                            | Azure/Kubernetes Service (AKS)/Planned Maintenance (AKS)/Configuring planned maintenance                                                                                            |
+| 2503230030001347  | aks                                                    | Requests help troubleshooting why planned OS maintenance upgrade did not trigger despite a configured maintenance window.                                                                                                                                                                    | Azure/Kubernetes Service (AKS)/Planned Maintenance (AKS)/Planned maintenance not working as expected                                                                                |
+| 2503170030005591  | Auto-upgraded node image without scheduler             | Reports node image auto-upgrade continued after the maintenance window was deleted (expects no upgrades without a window).                                                                                                                                                                   | Azure/Kubernetes Service (AKS)/Create, Upgrade, Scale and Delete operations (cluster or nodepool)/Node image upgrade                                                                |
+| 2501150040009621  | Upgrades outside maintenance window                    | Multiple “Upgrade agent pool node image version” operations occurred outside the configured window, causing production outage; window set to 06:00 UTC every 3rd Saturday; asks why a Tuesday 7 PM EST update occurred outside the planned window.                                           | Azure/Kubernetes Service (AKS)/Planned Maintenance (AKS)/Planned maintenance not working as expected                                                                                |
+
+Outages due to unintended breaking changes coming from AKS releases (without default maintenance)--
 
 **Regression Impact:**
 - **Production Outages**: Critical data path failures affecting multi-region deployments
@@ -73,19 +89,7 @@ Outages due to unintended breaking changes coming from AKS releases --
   - [Incident 651582493](https://portal.microsofticm.com/imp/v3/incidents/details/651582493): azure-npm v1.6.27 CrashLoopBackOff in East US 2 EUAP
   - [Incident 644343290](https://portal.microsofticm.com/imp/v3/incidents/details/644343290): Azure Monitor metrics service disruption
 
-**Undeclared Breaking Changes:**
-- **Root Causes**:
-  - Addon maintainers lack comprehensive breaking change detection
-  - Inconsistent interpretation of what constitutes a breaking change
-  - Limited testing coverage for complex upgrade scenarios
-  - Example: [KEDA Issue #4699](https://github.com/kedacore/keda/issues/4699) - Breaking changes not properly documented leading to customer complaints and tickets.
 
-- **Customer Impact**:
-  - Breaking changes deployed as patches causing immediate workload failures
-  - [Risk 32386375](https://portal.microsofticm.com/imp/v3/risks/details/32386375): CCP features released to stable versions without proper testing
-  - [Incident 528638871](https://portal.microsofticm.com/imp/v3/incidents/details/528638871): NFS mount failures on Azure Linux nodepools after patch update
-  
-  For more such cases refer to the [Addon Release Problem Statement and Motivation document](https://microsoft.sharepoint.com/:w:/r/teams/azurecontainercompute/_layouts/15/Doc.aspx?sourcedoc=%7B9D000F16-5F05-47DA-8420-13BE997E2EC1%7D&file=Addon%20Release%20Problem%20Statement%20and%20Motivation.docx&wdOrigin=TEAMS-MAGLEV.p2p_ns.rwc&action=default&mobileredirect=true).
 
 ## Existing Solutions or Expectations 
 
