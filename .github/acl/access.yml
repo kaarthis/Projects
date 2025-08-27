@@ -33,4 +33,4 @@ configuration:
     role: Push
    # AKS PM SG
   - team: akspm
-    role: Write
+    role: Push
