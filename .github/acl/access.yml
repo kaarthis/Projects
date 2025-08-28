@@ -15,23 +15,21 @@ configuration:
     - member: qike
       role: Maintain
     # Azure Container Service - CG-Read Write
-    - team: RCG-Read Write-CG-23637
-      role: Push
+    - team: rrd-read write-rg-22938
+      role: Write
     # Azure Container Service - NTDEV CG-Read Write
-    - team: RAM_37c20f81-6ff2-4c2a-8fee-00c1b3324bf5
-      role: Push
-    - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
-      role: Push
+    - team: azurecontainerservice-rg-readwritentdev-8295
+      role: Write
     # AKS PM SG
     - team: akspm
-      role: Push
+      role: Write
     # Azure Container Service - CG-Read Only
     - team: RAM_3ca337f3-91b6-4c58-bf9c-fa8a8b43eac6
-      role: Pull
+      role: Read
     - team: RAM_dbd153a3-3ced-41e3-80a1-eb578f2d75e5
-      role: Pull
+      role: Read
     # Azure Container Service - AKS-RO
     - team: RAM_ae99a8e2-4235-4ab1-b88c-fa7cc1419bb0
-      role: Pull
+      role: Read
     - team: RAM_3c9edc39-6b05-46b7-bf9f-ff48b5e0e870
-      role: Pull
+      role: Read
