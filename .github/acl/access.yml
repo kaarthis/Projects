@@ -5,14 +5,16 @@ resource: repository
 where:
 configuration:
   manageAccess:
-    # Azure Container Service - Approver
-    - team: rrd-acsappr-25810
-      role: Maintain
     - member: jpalma
       role: Maintain
     - member: jpang
       role: Maintain
     - member: qike
+      role: Maintain
+    # Azure Container Service - Approver
+    - team: rrd-acsappr-25810
+      role: Maintain
+    - team: RCG-ACSAPPR-26695
       role: Maintain
     # Azure Container Service - CG-Read Write
     - team: rrd-read write-rg-22938
