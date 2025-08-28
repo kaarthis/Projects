@@ -126,13 +126,36 @@ Options considered (concise):
 |-------|------|------|----------|
 | 1. Status quo | Zero engineering | Incidents persist; no governance | Rejected |
 | 2. Portal‑only | Faster UX uplift | No IaC/policy; not automatable | Rejected |
-| 3. Managed‑first guardrails | Tighter integration, no external endpoints, leverages existing investments; Azure Managed Prometheus present on ~48% of clusters today → meaningful coverage from day one | Leaves Azure Monitor alerts and self‑hosted Prometheus for a later phase | Recommended |
+| 3. Managed‑first guardrails | Tighter integration, no external endpoints, leverages existing investments; Azure Managed Prometheus present on ~15% of clusters today → meaningful coverage from day one | Leaves Azure Monitor alerts and self‑hosted Prometheus for a later phase | Recommended |
 | 4. Guardrails (source‑agnostic) | Meets all users (Managed + self‑hosted + external) | Broader integration surface slows delivery; more security surface | Defer |
++ | 5. ClusterHealth Custom Resource / HealthStatus API (Custom Resource approach) | Extensible, cluster-local aggregation of arbitrary health signals (CRs, health endpoints, Prom exporters); enables third parties and customer workloads to publish health entries directly into cluster; natural fit for controllers and runtime integrations | Requires kube-level controller, RBAC and lifecycle management; introduces additional runtime surface and operational complexity; ARM-only consumers need bridging; potential adoption friction for brownfield clusters without controllers | Consider as Phase-2 extension |
 
-Rationale for 3: Managed Prometheus adoption is material (~48% of clusters), providing broad immediate impact with lowest integration and security complexity. We can expand to Azure Monitor alerts and self‑hosted Prometheus endpoints incrementally without blocking the core value.
+### Option 5 (details): ClusterHealth CR / HealthStatus API
+Description:
+- Introduce a small, versioned Kubernetes Custom Resource Definition (CRD) such as `ClusterHealthEntry` and an aggregator controller that synthesizes a `ClusterHealth` status. Any component (control plane, addon, third‑party operator, or customer workload) can create or update `ClusterHealthEntry` objects to signal local health. The Mesh/Upgrade RP (or Health Monitor) reads the aggregated `ClusterHealth` status during pre/during/post phases to drive gate decisions.
 
-Breaking changes: None (opt‑in).  
-Go‑to‑market: Preview (agent pools), iterate; GA with Azure Policy + deeper Managed Prometheus integration.  
+Pros:
+- Generic & extensible: supports arbitrary health signals without adding n special-case hooks to the gate API.
+- Runtime-friendly: cluster-local controller enables low-latency evaluations, works offline of ARM for rapid decisions, and is natural for third‑party integrations.
+- Broad compatibility: can coexist with Prometheus rule‑group integration — a Prom exporter or small adapter can surface PromRuleGroup states as `ClusterHealthEntry` objects.
+- Enables richer UX: customers can author CRs or use existing operators to report health; Gate definitions can reference aggregated ClusterHealth status or individual entry selectors.
+
+Cons:
+- Operational complexity: requires deploying and operating a controller, CRD lifecycle, RBAC scopes, versioning and upgrade management.
+- Deployment surface: brownfield customers may not want additional controllers; adds burden for clusters without standard addon pipelines.
+- ARM/RP bridging: ARM-native workflows (purely ARM + RP driven) must rely on a bridge/adapter to surface CR status to ARM APIs; adds integration work and failure modes.
+- Security considerations: write access to health CRs becomes sensitive — need auth model, signer identity, and abuse mitigation.
+
+UX and API implications (designer notes):
+- Gate Definition: keep a single, simple gate resource that references one or more signal backends (e.g., PromRuleGroup IDs, ClusterHealth selector, webhook). Internally the Health Monitor will evaluate the referenced backends at pre/during/post points.
+- Pre/During/Post semantics: data plane upgrades (agent pools, mesh) should evaluate gates at three points — preflight (baseline), during (per-batch/canary boundaries), and post-upgrade (soak). Control plane upgrades remain pre/post only (abort-only). The CR approach naturally supports this cadence by exposing current cluster health at evaluation time.
+- Prometheus as a flavor: implement PromRuleGroup adapter that writes `ClusterHealthEntry` objects (or that the controller polls) so Prom integration is available immediately while preserving a path to generic CR-based signals.
+- Minimal required ask from customers: none if they use Prom integration; for generic integrations, customers or vendors can implement an adapter or emit ClusterHealthEntry CRs via existing operators.
+
+Recommendation & next steps:
+- Keep PromRuleGroup integration as the Phase 1 delivery to maximize immediate adoption and minimize friction.
+- Parallel design work: draft a minimal ClusterHealth CRD + aggregator controller design as Phase 2 exploration (include RBAC, auth, rate limits, and CR lifecycle). Prototype a Prom→CR adapter to validate the integration pattern.
+- Surface the extensibility story in the PRD: add a short note that Prom is the first supported signal backend and that the gate model is extensible to CR-based and webhook-based signals in future phases.
 
 Pricing: Included; standard Azure Monitor/Prometheus costs apply.
 
