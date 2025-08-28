@@ -31,11 +31,12 @@ These issues result in:
 ### Functional Goals
 
 - Require planned maintenance window configuration for all new AKS clusters.
-- Enable reusable maintenance configurations across multiple clusters
-- Promote `maintenanceConfigurations` to a top-level resource alongside `managedClusters`
-- Provide migration path for existing clusters to adopt the new model
-- Ensure customer awareness through Azure Advisor recommendations, API breaking change board approval, portal banners, and targeted communications to all customers
-- Provide comprehensive support materials including enhanced documentation with Bicep/Terraform samples and knowledge base articles for troubleshooting
+- Enable reusable maintenance configurations across multiple clusters.
+- Support cross-regional resource coverage: maintenance configurations can be referenced by clusters in different regions, with consistent enforcement and time-zone–aware scheduling.
+- Promote `maintenanceConfigurations` to a top-level resource alongside `managedClusters`.
+- Provide migration path for existing clusters to adopt the new model.
+- Ensure customer awareness through Azure Advisor recommendations, API breaking change board approval, portal banners, and targeted communications to all customers.
+- Provide comprehensive support materials including enhanced documentation with Bicep/Terraform samples and knowledge base articles for troubleshooting.
 
 ### Non-Functional Goals
 
