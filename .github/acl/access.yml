@@ -17,9 +17,13 @@ configuration:
     - team: RCG-ACSAPPR-26695
       role: Maintain
     # Azure Container Service - CG-Read Write
-    - team: "rrd-read write-rg-22938"
+    - team: "rrd-read\ write-rg-22938"
       role: Write
-    - team: "RCG-Read Write-CG-23637"
+    - team: "rrd-read_write-rg-22938"
+      role: Write
+    - team: "RCG-Read\ Write-CG-23637"
+      role: Write
+    - team: "RCG-Read_Write-CG-23637"
       role: Write
     # Azure Container Service - NTDEV CG-Read Write
     - team: azurecontainerservice-rg-readwritentdev-8295
@@ -32,7 +36,9 @@ configuration:
     - team: akspm
       role: Write
     # Azure Container Service - CG-Read Only
-    - team: "rrd-read only-rg-22937"
+    - team: "rrd-read\ only-rg-22937"
+      role: Read
+    - team: "rrd-read_only-rg-22937"
       role: Read
     - team: RAM_3ca337f3-91b6-4c58-bf9c-fa8a8b43eac6
       role: Read
