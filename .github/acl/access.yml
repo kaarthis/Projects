@@ -16,34 +16,12 @@ configuration:
       role: Maintain
     - team: RCG-ACSAPPR-26695
       role: Maintain
-    # Azure Container Service - CG-Read Write
-    - team: "rrd-read\ write-rg-22938"
+    # Sean McKenna's Organization FTE
+    - team: SeanMcKOrgFTE
       role: Write
-    - team: "rrd-read_write-rg-22938"
+    # Qi Ke's Organization FTE
+    - team: QiKeOrgFTE
       role: Write
-    - team: "RCG-Read\ Write-CG-23637"
-      role: Write
-    - team: "RCG-Read_Write-CG-23637"
-      role: Write
-    # Azure Container Service - NTDEV CG-Read Write
-    - team: azurecontainerservice-rg-readwritentdev-8295
-      role: Write
-    - team: RAM_37c20f81-6ff2-4c2a-8fee-00c1b3324bf5
-      role: Write
-    - team: RAM_cca56bd2-00d1-4c43-a87d-dc3564f290a9
-      role: Write
-    # AKS PM SG
-    - team: akspm
-      role: Write
-    # Azure Container Service - CG-Read Only
-    - team: "rrd-read\ only-rg-22937"
-      role: Read
-    - team: "rrd-read_only-rg-22937"
-      role: Read
-    - team: RAM_3ca337f3-91b6-4c58-bf9c-fa8a8b43eac6
-      role: Read
-    - team: RAM_dbd153a3-3ced-41e3-80a1-eb578f2d75e5
-      role: Read
     # Azure Container Service - AKS-RO
     - team: azurecontainerservice-aks-ro-eb62
       role: Read
