@@ -30,15 +30,14 @@ Example problems observed during/after upgrade:
 
 ### Functional Goals
 
-- Deliver SLO-gated AKS upgrades across preflight, canary, and post-upgrade phases.
-- Evaluate control plane upgrades with pre- and post- gates that make abort-only decisions (no rollback).
-- Act on breaches with abort or, where supported, safe rollback for agent pools.
-- Provide reusable, policy- and RBAC-governed guardrail configurations for consistency across clusters and services.
-- Leverage Azure Managed Prometheus signals to declare SLOs without new instrumentation; support AKS-managed service mesh (Istio) with mesh-level SLOs exposed via Prometheus.
-- Ensure resilient evaluation and a clear, durable audit of gating decisions and breaches.
-- Offer first-class observability for gates: concise status, decision timelines, and exportable breach events available via CLI/Portal/APIs for audit and automation.
-- Provide guided troubleshooting with root-cause hints and next steps, plus improved documentation (how-tos, examples, best practices) for authoring, tuning, and operating gates at scale.
-- Work across upgrade strategies (rolling and blue/green) and agent pool types, independent of soak/pacing settings, and compatible with maintenance windows.
+- Deliver SLO-gated upgrades for agent pools with checks before, during, and after upgrades; on breach, stop or roll back where supported.
+- For control plane upgrades, support post-upgrade gating only with stop-only behavior.
+- Start with customer-defined gates using existing SLO signals (initially Azure Managed Prometheus); evaluate additional sources in later phases.
+- Provide a modular, reusable gate resource governed by RBAC and policy for consistency across teams and environments.
+- Support SLO gates for the AKS managed service mesh offering by consuming mesh-layer signals (e.g., L7 latency/error rate, retry/circuit-breaker activity, mTLS/policy status) without requiring application changes.
+- Ensure resilient, auditable decisions with clear timelines and outcomes suitable for automation.
+- Offer strong observability and guided troubleshooting to help author, tune, and operate gates at scale.
+- Support rolling and blue/green strategies and all agent pool types; operate independently of pacing/soak and align with maintenance windows.
 
 ### Non-Goals
 - Signal sources: v1 supports Azure Managed Prometheus only; Azure Monitor alert rules and self‑hosted/external Prometheus are out of scope and deferred to a later phase
@@ -91,6 +90,28 @@ Business Impact / OKR Alignment:
 - AKS Blue/Green Nodepool Upgrade (rolling out): native nodepool cutover; nodepool‑only; no app SLO gating; control plane unchanged
 - 3P CD systems with health gates (not integrated into AKS upgrade engine)
 - Gaps: fragmentation, high ops cost, no uniform governance, inconsistent quality
+
+## User Stories
+
+The user stories below are implementation‑agnostic and ensure support pre/during/post gates, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer, platform operator, integrator).
+
+| Persona | Story ID | User Story (As a...) | Acceptance Criteria (high level) |
+|--------:|---------:|---------------------|---------------------------------|
+| Cluster Operator | CO-1 | As a Cluster Operator, I want to attach one or more named gates to a planned upgrade so that AKS evaluates cluster health before, during (per-batch/canary), and after the upgrade and can automatically stop or roll back when thresholds are breached. | Gate can be bound to an upgrade; evaluations occur at pre/during/post points; upgrade aborts or triggers agent-pool rollback when configured; decision is auditable. |
+| Cluster Operator | CO-2 | As a Cluster Operator, I want to reuse a centrally managed gate (defined once, referenced by many clusters) so I can enforce org policies consistently. | Gate resource can be referenced by multiple clusters; policy can target gate resources; status and breaches are queryable per cluster. |
+| Application Developer | AD-1 | As an App Developer, I want to express my service's health contract (SLOs) using the simplest supported signal format so upgrades are prevented when my app is degraded. | A gate can reference a Managed Prometheus rule group (Phase 1) or an equivalent aggregated health signal; breach details include rule name, observed value, and timestamp. |
+| Platform Operator | PO-1 | As a Platform Operator, I want a default, low-friction integration (managed Prometheus) out-of-the-box and an extensible path (CR/webhook) for advanced users so we balance adoption and extensibility. | Default Prometheus integration works with minimal configuration; PRD documents extension paths (CRD, webhook, adapters) and owners. |
+| Gate Integrator / 3P Provider | GI-1 | As an Integrator, I want a clear integration contract (event/decision or health endpoint) so I can implement a gate adapter or external gate system that interoperates with AKS upgrade orchestration. | Event/decision webhook schema or health-aggregation contract is published; adapter can map external signals to the gate contract; idempotency and auth semantics are documented. |
+| Third‑party Monitoring Provider | TM-1 | As a Monitoring Provider, I want to integrate my signal into gates without forcing customers to migrate their tooling so my customers can use existing monitoring with AKS guardrails. | PRD documents adapter patterns (PromRuleGroup → CR / webhook); example integration flow exists. |
+| Fleet / Program Manager | FM-1 | As a Fleet Manager, I want gates to be targetable via ARM/Policy so I can enforce organizational constraints and audit compliance across clusters. | Gates are ARM resources or ARM-referenced constructs; Azure Policy can audit/enforce gate bindings. |
+
+Acceptance criteria common to all stories:
+- Gate evaluations produce durable, queryable events (evaluations & breaches) with timestamps, correlation IDs, and diagnostic context.
+- Gate decisions (proceed/abort/hold/rollback) are exposed to CLI/Portal/API and are auditable in activity logs.
+- Default behavior in Phase 1 supports Managed Prometheus rule groups; extension points for CR/webhook adapters are documented.
+- Security model and RBAC principals for gate management and signal publishing are defined at a high level (detailed RBAC design is a follow-up task).
+
+
 
 ## What will the announcement look like?
 
