@@ -29,3 +29,6 @@ configuration:
       role: Read
     - team: RAM_3c9edc39-6b05-46b7-bf9f-ff48b5e0e870
       role: Read
+    # Temporary - Delete once the org groups sync
+    - team: acs-core
+      role: Write
