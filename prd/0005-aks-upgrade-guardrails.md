@@ -112,8 +112,6 @@ Business Impact / OKR Alignment:
 
 The user stories below are implementation‑agnostic and ensure support pre/during/post gates, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer).
 
-| Persona | Story ID | User Story (As a...) | Acceptance Criteria (high level) |
-|--------:|---------:|---------------------|---------------------------------|
 | Persona | Story ID | User Story | Acceptance Criteria |
 |---------|---------:|-----------|---------------------|
 | Cluster Operator | CO-1 | As a Cluster Operator, I want to attach one or more named gates to a planned upgrade and reuse centrally managed gates so AKS evaluates health pre/during/post upgrade and org policies are enforced consistently. | Gates can be bound to an upgrade; evaluations occur at pre/during/post phases; a gate resource can be referenced by multiple clusters; gate references are enforceable via Azure Policy/RBAC; per-run evaluation sessions are materialized and queryable. |
@@ -246,14 +244,15 @@ Adapters or future providers (e.g., webhook publisher, CRD aggregator, self‑ho
 
 
 
-## ✅ **Recommendation: Option B – Dedicated ARM Resource Model**
+## ✅ **Recommendation: Option A – Custom Resource (CR) Model**
 
-**Why Option B is Preferred:**
-- It offers **strong governance**, **reusability**, and **auditability**, which are critical for enterprise-grade upgrade safety.
-- The **versioned contract** and **evaluation sessions** provide a clean separation of gate intent vs execution, simplifying retrospectives and compliance.
-- Though it introduces more ARM surface area and initial tooling needs, these are mitigated by planned CLI/Portal support and templates.
+## Why was Option A chosen?
 
-**Option A** is ideal for community-driven, lightweight, and flexible deployments—especially in non-Azure environments. However, for AKS and enterprise scenarios where **policy enforcement**, **traceability**, and **multi-cluster consistency** are key, **Option B** is the more robust and scalable choice.
+- Aligns with Kubernetes-native patterns and community expectations.
+- Supports both AKS and non-AKS clusters without Azure dependency.
+- Enables rapid iteration and experimentation via GitOps and CLI.
+- Keeps gate logic flexible and extensible inside the cluster.
+- Minimizes ARM surface area and avoids premature centralization.
 
 ## Announcement: SLO‑Gated, Metric‑Aware Upgrades for AKS (Public Preview)
 
@@ -343,9 +342,13 @@ Guardrails complement existing rollout strategies—making safe the default whil
 
 # Definition of Success
 
-- SLO-gated upgrades reduce post-upgrade incidents and operator burden.
-- Durable, auditable evaluation and breach events with clear timelines.
-- High safe upgrade completion rate, lower Sev2+ post-upgrade volume, improved upgrade CSAT.
+| Description                                 | Metric                                  | Target                |
+|---------------------------------------------|-----------------------------------------|-----------------------|
+| Reduce post-upgrade incidents               | Number of Sev2+ incidents post-upgrade  | < 5 per month         |
+| Lower operator burden                       | Manual intervention rate                | < 10% of upgrades     |
+| Durable, auditable evaluation and breach events | Evaluation/breach event retention      | 100% for 90 days      |
+| High safe upgrade completion rate           | Successful upgrade rate                  | > 98%                 |
+| Improved upgrade CSAT                       | Customer satisfaction score              | +20 uplift from baseline |
 
 # Requirements
 
@@ -395,3 +398,15 @@ A short note on positioning: while GKE and EKS provide solid upgrade primitives,
 - Minimizes ARM surface area and avoids premature centralization.
 
 *While Option B offers strong governance and auditability, Option A provides a lighter-weight, developer-friendly path that’s easier to adopt and evolve—especially for early-stage rollout and community engagement.*
+
+
+### 🔄 Upgrade Gates: Complexity Comparison
+
+| Dimension    | Option A: CR-first Model                | Option B: Dedicated ARM Resource Model           |
+|-------------|-----------------------------------------|-------------------------------------------------|
+| Authoring   | YAML-based, GitOps-friendly             | Requires ARM resource creation and referencing   |
+| Tooling     | kubectl + optional plugin               | Needs CLI/Portal scaffolding for authoring       |
+| Governance  | Cluster-native RBAC, policy via OPA     | Centralized ARM policy, RBAC, and audit          |
+| Auditability| In-cluster events, GitOps history       | ARM event stream, resource-level audit           |
+| Extensibility| Easy to extend via CRDs and adapters   | Extensible via ARM adapters, but more formal     |
+| Adoption    | Lower barrier, fast iteration           | Higher initial setup, strong enterprise controls |
