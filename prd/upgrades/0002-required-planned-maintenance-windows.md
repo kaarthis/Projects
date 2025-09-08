@@ -30,6 +30,8 @@ These issues result in:
 
 ### Functional Goals
 
+Phase 1: promote maintenanceConfigurations to a top‑level resource; Phase 2: require maintenance windows for all clusters (Kubernetes version cutoff TBD).
+
 - Require planned maintenance window configuration for all new AKS clusters.
 - Enable reusable maintenance configurations across multiple clusters.
 - Support cross-regional resource coverage: maintenance configurations can be referenced by clusters in different regions, with consistent enforcement and time-zone–aware scheduling.
@@ -70,7 +72,6 @@ These issues result in:
 
 ### Customer signals and support volume
 
-- In CY25, AKS is averaging 3–5 support cases per month where customers ask why upgrades did not occur inside their planned maintenance windows or happened outside them.
 - Anecdotally, customers are unclear on how to configure and interpret maintenance windows; for example, see [Incident 660151968 (IcM)](https://portal.microsofticm.com/imp/v5/incidents/details/660151968/summary).
 
 | Incident ID       | Summary                                                | Customer symptom/ask                                                                                                                                                                                                                                                                         | Category (SAP path)                                                                                                                                                                  |
@@ -122,9 +123,13 @@ Customers have consistently reported frustration with unexpected cluster upgrade
 
 Previously, customers were required to configure planned maintenance windows individually for each AKS cluster, resulting in repetitive setup and increased risk of inconsistent maintenance schedules across their environments.
 
-To address these concerns, AKS is transitioning from an optional (opt-in) planned maintenance window model to a required (default) model. Going forward, all AKS clusters must have a planned maintenance window configured at creation. This change is not a new feature, but a shift in default behavior to ensure every cluster has a predictable upgrade schedule, reducing the risk of unexpected disruptions and improving overall customer experience.
+To address these concerns, AKS is transitioning from an optional (opt-in) planned maintenance window model to a required (default) model. This is a change in default behavior—not a new feature—and aims to ensure every cluster has a predictable upgrade schedule, reducing unexpected disruptions and improving overall customer experience.
 
-With this new user experience, customers can configure planned maintenance windows at scale, applying a single maintenance configuration across multiple AKS clusters to ensure consistent and efficient management of upgrade schedules throughout their environments.
+Rollout will occur in two phases:
+- Phase 1: Promote maintenanceConfigurations to a top‑level resource so maintenance configurations can be created once and reused across multiple clusters.
+- Phase 2: Require a maintenance window at cluster creation for all clusters (Kubernetes version cutoff: TBD).
+
+With this new experience, customers can configure planned maintenance windows at scale by applying a single maintenance configuration across multiple AKS clusters for consistent and efficient upgrade scheduling.
 
 
 ## Migration Strategy and Version Cutoff
@@ -150,7 +155,7 @@ Starting with Kubernetes version 1.36, all AKS clusters must have specific maint
 
 ### Migration Path for Existing Clusters
 
-Migration timeline must be finalized before the start of Kubernetes 1.36 preview testing.
+The following migration takes effect whenever customers with existing maintenance configuration do a PUT operation (after the peer resource model is ready and operational)
 **Clusters with existing maintenance windows:**
 - Automatically migrated to the new API model with zero downtime
 - Migration process:
@@ -176,7 +181,7 @@ After migration, a cluster with all three maintenance configuration types will r
       "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedNodeOSUpgradeSchedule",
       "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.ContainerService/maintenanceConfigurations/aksManagedAutoUpgradeSchedule"
     ],
-    // Legacy sub-resource configurations removed after migration
+  
       }
 }
 ```
