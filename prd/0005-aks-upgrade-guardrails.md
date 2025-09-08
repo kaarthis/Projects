@@ -110,30 +110,86 @@ Business Impact / OKR Alignment:
 
 ## User Stories
 
-The user stories below are implementation‑agnostic and ensure support pre/during/post gates, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer, platform operator, integrator).
+The user stories below are implementation‑agnostic and ensure support pre/during/post gates, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer).
 
 | Persona | Story ID | User Story (As a...) | Acceptance Criteria (high level) |
 |--------:|---------:|---------------------|---------------------------------|
-| Cluster Operator | CO-1 | As a Cluster Operator, I want to attach one or more named gates to a planned upgrade so that AKS evaluates cluster health before, during (per-batch/canary), and after the upgrade and can automatically stop or roll back when thresholds are breached. | Gate can be bound to an upgrade; evaluations occur at pre/during/post points; upgrade aborts or triggers agent-pool rollback when configured; decision is auditable. |
-| Cluster Operator | CO-2 | As a Cluster Operator, I want to reuse a centrally managed gate (defined once, referenced by many clusters) so I can enforce org policies consistently. | Gate resource can be referenced by multiple clusters; policy can target gate resources; status and breaches are queryable per cluster. |
-| Application Developer | AD-1 | As an App Developer, I want to express my service's health contract (SLOs) using the simplest supported signal format so upgrades are prevented when my app is degraded. | A gate can reference a Managed Prometheus rule group (Phase 1) or an equivalent aggregated health signal; breach details include rule name, observed value, and timestamp. |
-| Platform Operator | PO-1 | As a Platform Operator, I want a default, low-friction integration (managed Prometheus) out-of-the-box and an extensible path (CR/webhook) for advanced users so we balance adoption and extensibility. | Default Prometheus integration works with minimal configuration; PRD documents extension paths (CRD, webhook, adapters) and owners. |
-| Gate Integrator / 3P Provider | GI-1 | As an Integrator, I want a clear integration contract (event/decision or health endpoint) so I can implement a gate adapter or external gate system that interoperates with AKS upgrade orchestration. | Event/decision webhook schema or health-aggregation contract is published; adapter can map external signals to the gate contract; idempotency and auth semantics are documented. |
-| Third‑party Monitoring Provider | TM-1 | As a Monitoring Provider, I want to integrate my signal into gates without forcing customers to migrate their tooling so my customers can use existing monitoring with AKS guardrails. | PRD documents adapter patterns (PromRuleGroup → CR / webhook); example integration flow exists. |
-| Fleet / Program Manager | FM-1 | As a Fleet Manager, I want gates to be targetable via ARM/Policy so I can enforce organizational constraints and audit compliance across clusters. | Gates are ARM resources or ARM-referenced constructs; Azure Policy can audit/enforce gate bindings. |
+| Persona | Story ID | User Story | Acceptance Criteria |
+|---------|---------:|-----------|---------------------|
+| Cluster Operator | CO-1 | As a Cluster Operator, I want to attach one or more named gates to a planned upgrade and reuse centrally managed gates so AKS evaluates health pre/during/post upgrade and org policies are enforced consistently. | Gates can be bound to an upgrade; evaluations occur at pre/during/post phases; a gate resource can be referenced by multiple clusters; gate references are enforceable via Azure Policy/RBAC; per-run evaluation sessions are materialized and queryable. |
+| Cluster Operator | CO-2 | As a Cluster Operator, I want automated rollback and auditable diagnostics when an upgrade fails so I can restore health quickly and investigate root cause. | Configured agent‑pool rollback triggers on sustained breach; decisions (proceed/abort/rollback), timestamps, correlation IDs, evaluation snapshots and breach context are recorded and queryable for post‑mortem. |
+| Application Developer | AD-1 | As an App Developer, I want to express my service SLOs with a simple signal format and avoid noisy aborts so upgrades are blocked only on meaningful degradations. | Gates can reference Managed Prometheus rule groups or equivalent aggregated signals; support aggregation windows, debounce/consecutive thresholds, and sampling hints; breach events include rule name, observed value, window, and sample density; defaults favor conservative, low‑cardinality rules. |
 
 Acceptance criteria common to all stories:
 - Gate evaluations produce durable, queryable events (evaluations & breaches) with timestamps, correlation IDs, and diagnostic context.
 - Gate decisions (proceed/abort/hold/rollback) are exposed to CLI/Portal/API and are auditable in activity logs.
-- Default behavior in Phase 1 supports Managed Prometheus rule groups; extension points for CR/webhook adapters are documented.
+- Gate modes: either Fully Managed (Managed Prometheus / Azure Monitor rule groups) or Bring‑Your‑Own (self‑hosted Prometheus, OpenTelemetry, signed webhooks, in‑cluster CRDs). The Gate Signal adapter contract (schema, auth, idempotency, sample/window hints) and the normalized evaluation tuple ensure durable, auditable events and identical decision semantics regardless of provider. Tenants select managed or BYO via policy/CLI without changing gate behavior.
 - Security model and RBAC principals for gate management and signal publishing are defined at a high level (detailed RBAC design is a follow-up task).
 
 
-## Proposal (Alternative + Comparative Decision)
+## **Proposals
 
-### Option A : Dedicated Upgrade Gate Resource (Versioned, Reusable)
+### OPTION A : Extensible and Vendor-Agnostic Upgrade Gates via Custom Resources**
 
-#### Proposal
+### **Objective**
+To define a flexible, extensible, and vendor-neutral mechanism for upgrade gating in AKS and non-AKS Kubernetes clusters. The goal is to enable pre-, during-, and post-upgrade validation through declarative gate definitions and evaluations, supporting both managed and self-managed observability stacks.
+
+
+### **Design Principles**
+- **Extensibility**: Support a wide range of upgrade gate definitions and evaluation strategies.
+- **Vendor Agnosticism**: Avoid tight coupling with Azure-specific APIs or tooling.
+- **Cluster Independence**: Enable consistent behavior across AKS and non-AKS clusters.
+- **Declarative Configuration**: Use Kubernetes-native constructs (CRDs) to define and manage gates.
+
+
+### **Architecture Overview**
+
+#### **1. Gate Definition (Custom Resource)**
+- A Kubernetes Custom Resource (CR) defines the upgrade gate.
+- This CR includes:
+  - **Gate name and description**
+  - **Health criteria** (e.g., Prometheus query, webhook endpoint)
+  - **Scope** (cluster-wide, node pool, namespace)
+  - **Evaluation mode**: `Managed`, `Self-managed`, or `None`
+
+#### **2. Gate Evaluation (Custom Resource)**
+- A separate CR type captures the evaluation result of each gate.
+- This CR includes:
+  - **Gate reference**
+  - **Evaluation timestamp**
+  - **Status**: `Pass`, `Fail`, `Pending`
+  - **Diagnostics**: Optional logs or metrics
+
+#### **3. Integration Model**
+- **Custom Resource (CR)**:
+  - Provides a generic, Kubernetes-native model applicable to both AKS and non-AKS clusters.
+  - Enables community-driven contributions and extensibility.
+- **ARM API**:
+  - Used solely for **mode enablement**—to toggle gating behavior via a boolean switch.
+  - Does **not** define or manage gates directly.
+  - Example: `enableUpgradeGates: true` in ARM signals the RP to look for CRs in the cluster.
+
+#### **4. Endpoint and Authentication**
+- Each Gate CR may specify an **evaluation endpoint** and **authentication method** (e.g., webhook with token).
+- The RP (Resource Provider) pulls from a **well-defined, discoverable endpoint list** to evaluate gates post-upgrade action.
+
+
+#### ✅ **Pros**
+- **Kubernetes-Native**: CR-based design aligns with Kubernetes extensibility patterns.
+- **Cross-Cluster Compatibility**: Works across AKS and non-AKS clusters.
+- **Community-Friendly**: Encourages open-source contributions and vendor-neutral adoption.
+- **Flexible Evaluation**: Supports both managed (e.g., Azure Monitor/Prometheus) and self-managed setups.
+- **Separation of Concerns**: ARM API is used only for enablement, keeping gate logic within the cluster.
+
+#### ❌ **Cons**
+- **Operational Complexity**: Self-managed mode requires users to deploy and maintain gate controllers.
+- **Learning Curve**: CRD-based configuration may be unfamiliar to some users.
+- **Debugging Overhead**: Failures in gate evaluation may be harder to trace without centralized tooling.
+- **Limited ARM Visibility**: ARM API does not expose gate definitions or evaluations, which may limit portal integration.
+
+### Option B : Dedicated Upgrade Gate Resource (Versioned, Reusable)
+
+#### Summary
 Introduce a first-class ARM child resource: `Microsoft.ContainerService/upgradeGates/{gateName}`.  
 A gate holds a versioned, declarative contract describing:
 - Which signal sources (initially Azure Managed Prometheus rule groups; later additional providers/adapters) are authoritative
@@ -176,127 +232,138 @@ Adapters or future providers (e.g., webhook publisher, CRD aggregator, self‑ho
 - Offer gate templates (baseline latency/error SLO, platform health) to accelerate adoption
 - Supply adapter SDK + auth examples to reduce effort for third-party signal publishers
 
+## 🔍 **Comparison Summary**
 
-### Option B (Alternative): Inline Alert-Binding (Ephemeral Gate Spec)
+| Feature | **Option A: Custom Resource (CR) Model** | **Option B: Dedicated ARM Resource Model** |
+|--------|------------------------------------------|---------------------------------------------|
+| **Extensibility** | High – CRs allow flexible, Kubernetes-native definitions | High – adapters normalize signals, extensible via providers |
+| **Vendor Agnosticism** | Strong – CRs work across AKS and non-AKS clusters | Moderate – ARM-centric, but adapters can support non-Azure signals |
+| **Governance & Policy** | Limited – CRs are cluster-scoped, harder to enforce centrally | Strong – ARM gates are versioned, reusable, and policy-targetable |
+| **Operational Clarity** | Mixed – CRs are flexible but debugging is decentralized | Strong – clear separation of intent vs execution, audit trail |
+| **Reusability** | Low – CRs are per-cluster, not easily shared | High – gates are reusable across clusters via references |
+| **Tooling Requirements** | Lower – uses existing Kubernetes patterns | Higher – needs CLI/Portal scaffolding for authoring and referencing |
+| **ARM API Role** | Minimal – only used to enable/disable gating mode | Central – defines gate resources and governs upgrade behavior |
 
-Instead of a standalone Upgrade Gate ARM child resource, embed a gating block directly inside each upgrade request (and optionally as a reusable profile on the managed cluster spec). The block lists:
-- Rule group (or alert rule) resource IDs (Azure Managed Prometheus first; later Azure Monitor / custom endpoints via URLs + auth refs)
-- Phase directives (preflight / canary / post) with per-phase evaluation windows
-- Breach actions (abort | rollback* where supported) and optional debounce/consecutive settings
-- Optional inline threshold overrides or simple expression filters (label selectors) to scope which rules apply
 
-Each upgrade run materializes an immutable “Gate Session” object (diagnostic record only) capturing:
-- Resolved rule set snapshot (IDs + digests)
-- Evaluations and breach events
-- Final decision (proceed / abort / rollback)
 
-No persistent gate configuration resource exists beyond historical session artifacts.
+## ✅ **Recommendation: Option B – Dedicated ARM Resource Model**
 
-#### Pros
-- Minimal conceptual surface (no extra ARM resource type)
-- Faster initial implementation; relies on existing rule group IDs only
-- Per-upgrade flexibility (teams can experiment without touching shared objects)
-- Avoids early versioning / migration logic (schema co-evolves with upgrade API)
-- Lower RBAC friction (uses existing cluster write permission)
-- Eliminates indirection when mapping a breach to a rule (1:1 listing)
+**Why Option B is Preferred:**
+- It offers **strong governance**, **reusability**, and **auditability**, which are critical for enterprise-grade upgrade safety.
+- The **versioned contract** and **evaluation sessions** provide a clean separation of gate intent vs execution, simplifying retrospectives and compliance.
+- Though it introduces more ARM surface area and initial tooling needs, these are mitigated by planned CLI/Portal support and templates.
 
-#### Cons
-- Configuration duplication across clusters and repeated upgrade requests (drift risk)
-- Harder centralized governance (Azure Policy must parse nested spec; no targetable child resource)
-- RBAC granularity limited (cannot delegate gate authoring separately from general cluster updates)
-- Retrofitting new signal providers forces cluster/upgrade API churn rather than adding adapter resources
-- Difficult to share vetted gate bundles (copy/paste or templates only)
-- Auditing requires mining historic session objects; no “current intended gate” to inspect
-- Inline threshold overrides can diverge from canonical rule definitions (silently forked SLO logic)
-
-### Recommendation / Vote
-
-Preferred: Option A (Dedicated Upgrade Gate Resource)
-
-Rationale:
-- Governance, reuse, and auditability are strategic for large estates; those concerns compound over time and outweigh the initial speed of the inline model.
-- A versioned gate contract future‑proofs multi-provider extensibility (Prometheus → adapters) without forcing upgrade API churn.
-- Separation of “desired guardrails” (gate resource) from “execution timeline” (evaluations, breaches) produces cleaner UX and compliance stories.
-- Policy and RBAC alignment are materially simpler with a targetable resource type.
-- Early indirection cost (one extra resource) is minor relative to long‑term operational efficiency and reduced drift.
-
-Mitigations for Option A complexities:
-- Provide quick-start CLI/Portal wizards to scaffold a gate from selected rule groups.
-- Offer dry-run validation and template library to lower authoring friction.
-- Supply adapter SDK to accelerate third-party signal integration.
-
-Conclusion: Adopt Option A; do not pursue Option B beyond a lightweight “ephemeral override” extension (future) for rare one-off experimental upgrades.
-
-### Final Decision
-
-Vote: Option A (Dedicated Upgrade Gate Resource) – Accepted.
-Option B – Rejected (retain as documented alternative for historical rationale).
-
+**Option A** is ideal for community-driven, lightweight, and flexible deployments—especially in non-Azure environments. However, for AKS and enterprise scenarios where **policy enforcement**, **traceability**, and **multi-cluster consistency** are key, **Option B** is the more robust and scalable choice.
 
 ## Announcement: SLO‑Gated, Metric‑Aware Upgrades for AKS (Public Preview)
 
-We are introducing reusable, SLO‑aware upgrade guardrails that continuously evaluate application and platform health before, during, and after AKS upgrades. These guardrails turn your existing operational signals into automated “proceed / pause / abort / rollback (agent pools)” decisions—reducing manual dashboard watching and lowering post‑upgrade incident risk.
+We are shipping extensible, vendor‑agnostic upgrade guardrails built around Kubernetes Custom Resources (CRs). Gate definitions and evaluation results live in the cluster as CRs, enabling declarative, Kubernetes‑native SLO contracts that the upgrade engine discovers and evaluates before, during, and after upgrades. This CR‑first design makes it simple to integrate both managed and self‑managed observability backends while keeping gate intent and execution close to the workloads they protect.
 
 ### What It Delivers
-- Safer upgrades: Early detection of latency, error rate, and stability regressions.
-- Reusable guardrails: Define once, apply consistently across clusters for predictable governance.
-- Phased protection: Preflight validation, canary confidence building, and post‑upgrade drift detection.
+- Safer upgrades: Early detection of latency, error‑rate, and stability regressions via CR‑defined health criteria.
+- Cross‑cluster compatibility: Works consistently across AKS and non‑AKS clusters using the same CR model.
+- Declarative configuration: Define gates with familiar Kubernetes CRs and manage them with standard tooling (kubectl, GitOps).
+- Flexible evaluation: Support for managed (Azure Monitor / Managed Prometheus) and self‑managed stacks via adapter patterns that publish normalized evaluations into the CR ecosystem.
 - Automatic intervention: Abort or (for agent pools) optional rollback when sustained anomalies are detected.
-- Clear auditability: Each decision backed by timestamped evaluation history and breach events.
+- Community-friendly extensibility: Open CR model enables third‑party adapters, controller contributions, and ecosystem integrations.
 
 ### Why It Matters
-Traditional readiness checks miss slow‑burn or phase‑specific issues. Teams today script ad‑hoc blue/green flows and manually chase alerts. Guardrails reduce toil, standardize safety practices, and help prevent avoidable customer impact.
+Builtin readiness checks miss nuanced, phase‑specific degradations. CR‑based gates provide a native, extensible way to encode SLOs and automate upgrade decisions without vendor lock‑in. By keeping gate definitions and evaluations in‑cluster, teams gain reproducible, auditable safety checks that align with existing Kubernetes workflows.
 
 ### Customer Value
-- Higher upgrade confidence and velocity.
-- Fewer late‑detected regressions.
-- Consistent enforcement of operational standards without bespoke pipelines.
-- Extensible model designed to add more signal sources over time.
+- True cluster portability with consistent upgrade safety patterns.
+- Leverage existing Kubernetes skills and GitOps practices.
+- Easier third‑party integration and community contributions.
+- Simplified paths for connecting existing observability platforms via adapters.
+- Vendor‑neutral approach preserving infrastructure and toolchain flexibility.
 
 ### Availability
-- Public Preview: Agent pool upgrades (rollback supported where configuration allows). Control plane uses abort-only safety.
-- Roadmap: Broader governance integrations, expanded signal sources, and general availability after feedback.
+- Public Preview: CR‑based gating for agent pool upgrades (rollback supported where configured). Control plane gates are abort‑only.
+- ARM Role: ARM may be used only to toggle gating behavior at the RP level (enableUpgradeGates) — gate definitions and evaluations remain cluster‑native CRs.
+- Roadmap: Additional adapter patterns (webhook, CRD aggregators), managed adapter improvements, and GA after public preview feedback.
 
 ### Get Started
-Enable guardrails on a target cluster, reference your existing health signals, run an upgrade, and review the decision timeline. Share feedback to shape the GA release.
+Deploy the gate CRDs and controllers to your cluster, author gate CRs to express health criteria, and run an upgrade. The upgrade engine will discover and evaluate gates automatically. Provide feedback to help prioritize adapter work, UX improvements, and GA readiness.
 
-Guardrails complement (not replace) your existing rollout strategies—making safe the default, not an afterthought.
+Guardrails complement existing rollout strategies—making safe the default while preserving your monitoring and orchestration choices.
 
-
-## User Experience 
-
-
-### Operator Journeys (Scenarios)
-
-#### Examples with timelines (mock)
-
+## User Experience
 
 ### API
 
+- CR-first surface: two CRDs — UpgradeGate (spec: name, scope, criteria, evaluationMode, version) and GateEvaluation (sessionId, gateRef, phase, status, observedValue, window, metadata).
+- CRUD via Kubernetes API (kubectl / REST): controllers and adapters create/observe UpgradeGate and write idempotent GateEvaluation objects under the cluster namespace.
+- Adapters publish structured evaluation records (gateRef, phase, sourceId, status, value, thresholdContext, ts, runId) either by creating GateEvaluation CRs or invoking a local controller webhook.
+- Discovery & versioning: Each evaluation session snapshots the gate spec using specVersion and specHash to ensure reproducibility and traceability.
+- Security & Validation:
+  - Standard K8s authN/authZ — serviceaccounts + Role/ClusterRole bindings for publishers/controllers
+  - Optional signed webhook payloads for external adapters
+  - Admission validation for schema and auth
 
 ### CLI Experience
 
+- Primary UX via kubectl and small helper tooling:
+  - kubectl apply -f upgrade-gate.yaml (create/modify gates)
+  - kubectl get upgradegates, kubectl describe upgradegate <name>, kubectl get gateevaluations --selector=session=<id>
+    - Example output:
+      ```
+      NAME         SESSION         PHASE      STATUS   VALUE   THRESHOLD   TS
+      latency-gate upgrade-2025-01 canary     Fail     210ms   <200ms      2025-08-13T09:14:33Z
+      error-gate   upgrade-2025-01 post       Pass     0.1%    <1%         2025-08-13T09:16:10Z
+      ```
+  - kubectl logs -l app=gate-controller -n kube-system
+- Az/installer convenience:
+  - az aks update --name <cluster> --resource-group <rg> --set properties.enableUpgradeGates=true (enablement toggle)
+  - az aks extensions install aks-gate-controller (one‑click controller install)
+- Developer ergonomics: provide `aks-gate` kubectl plugin (supports dry-run/simulation modes for safer experimentation; create/validate/simulate) and templates (latency, errors, OOM) to reduce JSON authoring.
+- Debugging: GateEvaluation objects include correlation IDs and timestamps to support traceable upgrade workflows. Builtin status fields and easy export of evaluation snapshots for post‑mortem.
 
 ### Portal Experience
 
+- Portal shows enablement and high‑level inventory (which clusters have gating controller deployed and which gates are attached).
+- For CR-first fidelity: Portal links to the cluster explorer or GitOps repo for editing gate CRs; displays recent evaluation summaries (pass/fail rates, latest breach, session timeline with phase transitions, breach events, and final decisions) by ingesting controller metrics/logs.
+- Read-only gate details and one‑click links to drill into GateEvaluation sessions and diagnostic artifacts; authoritative gate definitions remain in-cluster; Portal supports visibility and onboarding but defers authoring to GitOps or CLI workflows.
+- Limitations: authoritative gate definitions remain in‑cluster; Portal augments visibility and onboarding (templates, creation wizards that emit CRs into repo/cluster).
 
 ### Policy Experience
 
+- Governance via cluster-scoped policy + admission:
+  - Use Azure Policy to require the gate controller to be installed (audit/enforce).
+  - Use OPA/Gatekeeper constraints or Kubernetes admission policies to enforce allowed gate templates, scope restrictions, and required labels/annotations.
+    - Example: block UpgradeGate CRs with unmanaged endpoints or missing required labels.
+- Enforcement patterns:
+  - Audit mode to surface policy drift (no change to in‑cluster CRs).
+  - Enforce mode via Gatekeeper to block noncompliant UpgradeGate CRs (e.g., disallowed external endpoints, disallowed evaluation modes).
+- RBAC model:
+  - Gate authors: define UpgradeGate specs
+  - Publishers: adapters that emit GateEvaluations
+  - Operators: trigger upgrades and inspect sessions
+- Recommended ops: combine Azure Policy (controller presence + cluster config) with in‑cluster OPA constraints for fine‑grained, centralized governance while keeping gate definitions cluster-native.
+- This layered model enables centralized governance without sacrificing cluster-native flexibility.
 
 # Definition of Success
 
-## Expected Impact: Business, Customer, and Technology Outcomes, Experiments + Measures
-
-
+- SLO-gated upgrades reduce post-upgrade incidents and operator burden.
+- Durable, auditable evaluation and breach events with clear timelines.
+- High safe upgrade completion rate, lower Sev2+ post-upgrade volume, improved upgrade CSAT.
 
 # Requirements
 
 ## Functional Requirements
-
-
+- SLO-gated upgrades for agent pools (preflight, canary, post phases; abort/rollback on breach).
+- Control plane gates (abort-only).
+- Support for Azure Monitor, Prometheus, OTEL, webhook, CRD aggregator via uniform Gate Signal contract.
+- Multiple reusable gate resources bound via RBAC + Azure Policy.
+- Auditable evaluation and breach events; documented adapter contract for external/in-cluster publishers.
 
 ## Test Requirements
+- Validate SLO-gated upgrade flows, breach detection, rollback, and audit event generation.
+- Ensure compatibility with managed and BYO signal sources.
+- Confirm policy enforcement and RBAC separation.
 
-
+## Compete (GKE, EKS)
+- GKE: Basic automatic upgrades, limited SLO gating, less flexible governance.
+- EKS: Manual upgrades, no integrated SLO gating, limited audit and policy controls.
+- AKS Upgrade Guardrails: Enterprise-grade, extensible, vendor-agnostic SLO gating, strong governance, reusable gate resources, and comprehensive auditability.
 
 # Appendix: FAQ
