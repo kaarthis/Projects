@@ -13,7 +13,7 @@ last-updated: 2025-08-13
 # Overview
 
 Before this feature, AKS customers hand‑crafted blue/green or rolling flows and manually watched dashboards/alerts to decide whether to continue or stop an upgrade. Now, customers declare application and platform SLO guardrails through a simple, source‑agnostic Gate Signal API. The API supports:
-- Managed Azure Monitor metrics/alerts (first‑class managed option)
+- Managed Azure Monitor metrics/alerts (first‑class managed option, including Node Problem Detector and Managed Prometheus)
 - Bring‑your‑own (BYO) endpoints: self‑hosted Prometheus, OpenTelemetry collectors,  webhooks, or CRD‑aggregated health inside the cluster
 
 The upgrade engine evaluates these signals during preflight, canary, and post‑upgrade windows and will automatically abort—or roll back agent pools—on sustained anomalies. Gate lifecycle (attach, evaluate, decide) is cleanly separated from signal providers, so adding or swapping a monitoring backend does not require reauthoring gates.
@@ -47,7 +47,7 @@ Example upgrade pain points:
 ### Functional Goals
 - Provide SLO‑gated upgrades for agent pools with preflight, canary, and post phases; on breach → abort or rollback (when rollback supported)
 - Provide control plane pre and post gates (abort‑only)
-- Support Azure Monitor (managed) plus BYO endpoints (Prometheus, OTEL, webhook, CRD aggregator) from the start through a uniform Gate Signal contract
+- Support Azure Monitor (managed) including Node Problem Detector and Managed Prometheus, plus BYO endpoints (Prometheus, OTEL, webhook, CRD aggregator) from the start through a uniform Gate Signal contract
 - Allow multiple reusable gate resources bound to clusters via RBAC + Azure Policy
 - Support managed service mesh scenarios (L7 latency, error rate, retry/circuit breaker metrics, mTLS status) without app changes
 - Produce auditable, durable evaluation and breach events with clear timelines
@@ -362,8 +362,36 @@ Guardrails complement existing rollout strategies—making safe the default whil
 - Confirm policy enforcement and RBAC separation.
 
 ## Compete (GKE, EKS)
-- GKE: Basic automatic upgrades, limited SLO gating, less flexible governance.
-- EKS: Manual upgrades, no integrated SLO gating, limited audit and policy controls.
-- AKS Upgrade Guardrails: Enterprise-grade, extensible, vendor-agnostic SLO gating, strong governance, reusable gate resources, and comprehensive auditability.
+
+- GKE: Basic automatic upgrades and release channels; limited built‑in SLO gating and less centralized governance compared with AKS Upgrade Guardrails. See Google Cloud docs: https://cloud.google.com/kubernetes-engine/docs/concepts/automatic-upgrades
+- EKS: Cluster upgrades are typically manual or driven by external pipelines; no integrated SLO‑gating primitives or unified audit/policy surface. See AWS EKS docs: https://docs.aws.amazon.com/eks/latest/userguide/update-cluster.html
+
+A short note on positioning: while GKE and EKS provide solid upgrade primitives, AKS Upgrade Guardrails focus on preventing SLO regressions during upgrades through auditable, reusable gate resources and a consistent signal contract—reducing operator toil and post‑upgrade incidents.
 
 # Appendix: FAQ
+
+## What are the two design options?
+
+**Option A: CR-first (Custom Resource) Model**
+- Uses two Kubernetes CRDs: `UpgradeGate` and `GateEvaluation`.
+- Gate logic lives inside the cluster.
+- Evaluation is published via CRs or controller webhooks.
+- ARM API is used only to toggle enablement (`enableUpgradeGates: true`).
+
+**Option B: Dedicated ARM Resource Model**
+- Introduces a new ARM resource: `upgradeGates/{gateName}`.
+- Gates are versioned, reusable, and centrally governed.
+- Evaluation sessions and breach events are tracked in ARM.
+- Strong policy and audit capabilities.
+
+---
+
+## Why was Option A chosen?
+
+- Aligns with Kubernetes-native patterns and community expectations.
+- Supports both AKS and non-AKS clusters without Azure dependency.
+- Enables rapid iteration and experimentation via GitOps and CLI.
+- Keeps gate logic flexible and extensible inside the cluster.
+- Minimizes ARM surface area and avoids premature centralization.
+
+*While Option B offers strong governance and auditability, Option A provides a lighter-weight, developer-friendly path that’s easier to adopt and evolve—especially for early-stage rollout and community engagement.*
