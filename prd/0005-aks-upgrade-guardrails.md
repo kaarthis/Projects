@@ -130,15 +130,13 @@ Acceptance criteria common to all stories:
 ### OPTION A : Extensible and Vendor-Agnostic Upgrade Gates via Custom Resources**
 
 ### **Objective**
-To define a flexible, extensible, and vendor-neutral mechanism for upgrade gating in AKS and non-AKS Kubernetes clusters. The goal is to enable pre-, during-, and post-upgrade validation through declarative gate definitions and evaluations, supporting both managed and self-managed observability stacks.
-
+To define a flexible, extensible, and vendor-neutral mechanism for upgrade gating in AKS and non-AKS Kubernetes clusters—including service mesh scenarios. The goal is to enable pre-, during-, and post-upgrade validation through declarative gate definitions and evaluations, supporting both managed and self-managed observability stacks, and mesh-specific health signals.
 
 ### **Design Principles**
-- **Extensibility**: Support a wide range of upgrade gate definitions and evaluation strategies.
-- **Vendor Agnosticism**: Avoid tight coupling with Azure-specific APIs or tooling.
-- **Cluster Independence**: Enable consistent behavior across AKS and non-AKS clusters.
-- **Declarative Configuration**: Use Kubernetes-native constructs (CRDs) to define and manage gates.
-
+- **Extensibility**: Support a wide range of upgrade gate definitions and evaluation strategies, including mesh control plane and data plane health.
+- **Vendor Agnosticism**: Avoid tight coupling with Azure-specific APIs or tooling; support external sources (Prometheus, Datadog, etc.) via adapters.
+- **Cluster and Mesh Independence**: Enable consistent behavior across AKS, non-AKS clusters, and mesh deployments.
+- **Declarative Configuration**: Use Kubernetes-native constructs (CRDs) to define and manage gates, with a normalized evaluation contract for all sources.
 
 ### **Architecture Overview**
 
@@ -146,9 +144,10 @@ To define a flexible, extensible, and vendor-neutral mechanism for upgrade gatin
 - A Kubernetes Custom Resource (CR) defines the upgrade gate.
 - This CR includes:
   - **Gate name and description**
-  - **Health criteria** (e.g., Prometheus query, webhook endpoint)
-  - **Scope** (cluster-wide, node pool, namespace)
+  - **Health criteria** (e.g., Prometheus query, webhook endpoint, mesh-specific metrics)
+  - **Scope** (cluster-wide, node pool, namespace, mesh control/data plane)
   - **Evaluation mode**: `Managed`, `Self-managed`, or `None`
+  - **Adapters**: Managed, webhook, or external (e.g., Datadog, mesh telemetry)
 
 #### **2. Gate Evaluation (Custom Resource)**
 - A separate CR type captures the evaluation result of each gate.
@@ -157,30 +156,35 @@ To define a flexible, extensible, and vendor-neutral mechanism for upgrade gatin
   - **Evaluation timestamp**
   - **Status**: `Pass`, `Fail`, `Pending`
   - **Diagnostics**: Optional logs or metrics
+  - **Health summary**: Node, cluster, and mesh health as applicable
 
 #### **3. Integration Model**
 - **Custom Resource (CR)**:
-  - Provides a generic, Kubernetes-native model applicable to both AKS and non-AKS clusters.
-  - Enables community-driven contributions and extensibility.
+  - Provides a generic, Kubernetes-native model applicable to both AKS and non-AKS clusters, and mesh deployments.
+  - Enables community-driven contributions and extensibility, including mesh-specific adapters.
 - **ARM API**:
-  - Used solely for **mode enablement**—to toggle gating behavior via a boolean switch.
+  - Used solely for **mode enablement**—to toggle gating behavior via an enum (disabled, managed, byo, hybrid).
   - Does **not** define or manage gates directly.
-  - Example: `enableUpgradeGates: true` in ARM signals the RP to look for CRs in the cluster.
+  - Example: `operationGateConfig.mode: "hybrid"` in ARM signals the RP to look for CRs in the cluster, including mesh gates.
 
 #### **4. Endpoint and Authentication**
-- Each Gate CR may specify an **evaluation endpoint** and **authentication method** (e.g., webhook with token).
+- Each Gate CR may specify an **evaluation endpoint** and **authentication method** (e.g., webhook with token, mesh telemetry adapter).
 - The RP (Resource Provider) pulls from a **well-defined, discoverable endpoint list** to evaluate gates post-upgrade action.
 
+#### **Mesh Applicability**
+- Gates can be defined for mesh control plane upgrades, mesh data plane health, and mesh-specific SLOs (latency, mTLS, error rate, etc.).
+- The same CRD contract applies: mesh adapters publish normalized evaluation results, enabling mesh upgrades to be gated by custom or managed health signals.
+- Customers can use managed mesh metrics, custom mesh telemetry, or external mesh observability platforms (e.g., Datadog, New Relic) via adapters.
 
 #### ✅ **Pros**
-- **Kubernetes-Native**: CR-based design aligns with Kubernetes extensibility patterns.
-- **Cross-Cluster Compatibility**: Works across AKS and non-AKS clusters.
-- **Community-Friendly**: Encourages open-source contributions and vendor-neutral adoption.
-- **Flexible Evaluation**: Supports both managed (e.g., Azure Monitor/Prometheus) and self-managed setups.
-- **Separation of Concerns**: ARM API is used only for enablement, keeping gate logic within the cluster.
+- **Kubernetes-Native**: CR-based design aligns with Kubernetes extensibility patterns and mesh architectures.
+- **Mesh and Cluster Compatibility**: Works across AKS, non-AKS clusters, and mesh deployments.
+- **Community-Friendly**: Encourages open-source contributions and vendor-neutral adoption, including mesh adapters.
+- **Flexible Evaluation**: Supports managed, self-managed, and mesh-specific setups.
+- **Separation of Concerns**: ARM API is used only for enablement, keeping gate logic within the cluster and mesh.
 
 #### ❌ **Cons**
-- **Operational Complexity**: Self-managed mode requires users to deploy and maintain gate controllers.
+- **Operational Complexity**: Self-managed mode requires users to deploy and maintain gate controllers and mesh adapters.
 - **Learning Curve**: CRD-based configuration may be unfamiliar to some users.
 - **Debugging Overhead**: Failures in gate evaluation may be harder to trace without centralized tooling.
 - **Limited ARM Visibility**: ARM API does not expose gate definitions or evaluations, which may limit portal integration.
@@ -290,57 +294,173 @@ Guardrails complement existing rollout strategies—making safe the default whil
 
 ### API
 
-- CR-first surface: two CRDs — UpgradeGate (spec: name, scope, criteria, evaluationMode, version) and GateEvaluation (sessionId, gateRef, phase, status, observedValue, window, metadata).
-- CRUD via Kubernetes API (kubectl / REST): controllers and adapters create/observe UpgradeGate and write idempotent GateEvaluation objects under the cluster namespace.
-- Adapters publish structured evaluation records (gateRef, phase, sourceId, status, value, thresholdContext, ts, runId) either by creating GateEvaluation CRs or invoking a local controller webhook.
-- Discovery & versioning: Each evaluation session snapshots the gate spec using specVersion and specHash to ensure reproducibility and traceability.
-- Security & Validation:
-  - Standard K8s authN/authZ — serviceaccounts + Role/ClusterRole bindings for publishers/controllers
-  - Optional signed webhook payloads for external adapters
-  - Admission validation for schema and auth
+#### ARM API Surface (Enablement Only)
+
+```json
+// Managed Cluster (MC) resource
+{
+  "type": "Microsoft.ContainerService/managedClusters", // ARM resource type for AKS cluster
+  "properties": {
+    "operationGateConfig": {
+      "mode": "disabled" // enum: disabled | managed | byo | hybrid
+      // disabled: No upgrade gating
+      // managed: Only managed (Azure Monitor/Prometheus) gates
+      // byo: Only bring-your-own (webhook/CRD/external) gates
+      // hybrid: Both managed and BYO gates enabled
+    }
+    // "addon": { // optional future extension
+    //   "monitoring": true // enables managed monitoring integration
+    // }
+  }
+}
+
+// Fleet resource (for update runs)
+{
+  "type": "Microsoft.ContainerService/fleets", // ARM resource type for AKS fleet
+  "properties": {
+    "updateRunGateConfig": {
+      "mode": "disabled" // enum: disabled | managed | byo | hybrid
+      // Same semantics as above
+    }
+  }
+}
+```
+
+- The 'mode' enum allows customers to select which upgrade gating sources are enabled for their cluster or fleet.
+- This enables flexibility for managed, BYO, or hybrid gating strategies.
+
+#### Kubernetes CRD Surface (Two-CRD Model)
+
+> The upgrade gating contract uses only two CRDs:
+> - `UpgradeGate`: Defines the gate, criteria, phases, and adapters (spec/definition).
+> - `GateEvaluation`: Reports the result of evaluating a gate for a specific upgrade session and phase (reporting/evaluation).
+
+**Field Options Reference**
+
+| Field           | Options                                 | Description                                                                 |
+|-----------------|-----------------------------------------|-----------------------------------------------------------------------------|
+| scope           | cluster, nodepool, namespace            | Where the gate applies: cluster-wide, node pool, or namespace               |
+| evaluationMode  | Managed, Self-managed, None             | How evaluation is performed: managed (platform), self-managed (custom), none|
+| phaseBindings   | preflight, canary, post, post-drain, ...| Upgrade phases when the gate is evaluated                                   |
+| adapters.type   | AzureMonitor, Webhook, External         | Integration type: managed, webhook, or external provider                    |
+
+- **scope**: `cluster` (default, applies to the whole cluster), `nodepool` (applies to a specific node pool), `namespace` (applies to a namespace).
+- **evaluationMode**:
+  - `Managed`: Evaluation is performed by managed platform sources (e.g., Azure Monitor, Managed Prometheus).
+  - `Self-managed`: Evaluation is performed by custom/user sources (e.g., webhook, external provider).
+  - `None`: No evaluation (gate is disabled).
+- **phaseBindings**: List of upgrade phases to evaluate the gate. Common values: `preflight`, `canary`, `post`. You may add custom phases as needed (e.g., `post-drain`).
+- **adapters.type**:
+  - `AzureMonitor`: Managed adapter for Azure Monitor/Prometheus.
+  - `Webhook`: User-defined webhook endpoint.
+  - `External`: Third-party provider (Datadog, New Relic, etc.).
+
+```yaml
+# UpgradeGate CRD (Spec/Definition)
+apiVersion: upgrade.guardrails.aks.io/v1
+kind: UpgradeGate
+metadata:
+  name: custom-external-gate
+  namespace: default
+spec:
+  description: "Block upgrade if external system signals unhealthy"
+  # Scope can be cluster, nodepool, or namespace for fine-grained gating
+  scope: cluster # cluster | nodepool | namespace
+  # scope: nodepool # Uncomment for node pool-specific gating
+  # scope: namespace # Uncomment for namespace-specific gating
+  # Evaluation mode options: Managed | Self-managed | None
+  evaluationMode: Self-managed # Managed | Self-managed | None
+  criteria:
+    # This can be any custom criteria relevant to your external system
+    externalSignal: true # Example placeholder
+    threshold: 1 # Example threshold
+    window: 10m
+  phaseBindings:
+    - preflight
+    - canary
+    - post
+    # - post-drain # Uncomment to add custom phase
+  adapters:
+    # Example: User-defined webhook adapter for any external endpoint
+    - type: Webhook
+      endpoint: "https://your-external-health-endpoint/api/evaluate"
+      auth:
+        method: token
+        tokenRef: your-external-token
+    # Example: External provider integration (Datadog, New Relic, etc.)
+    - type: External
+      provider: "CustomObservabilityPlatform"
+      config:
+        apiKeyRef: custom-api-key
+        query: "custom_query_expression"
+    # - type: AzureMonitor # Uncomment to add managed adapter
+    #   ruleGroup: "prod-latency"
+```
+
+# All options for scope, evaluationMode, phaseBindings, and adapters are shown above. Use comments to select the desired configuration.
+
+```yaml
+# GateEvaluation CRD (Reporting/Evaluation)
+apiVersion: upgrade.guardrails.aks.io/v1
+kind: GateEvaluation
+metadata:
+  name: custom-external-gate-eval-20250909
+  namespace: default
+spec:
+  gateRef: custom-external-gate
+  sessionId: upgrade-20250909-001
+  phase: canary
+  status: Fail
+  observedValue: 0 # Example value from external system
+  thresholdContext: "external system signaled unhealthy"
+  timestamp: "2025-09-09T09:14:33Z"
+  diagnostics:
+    - message: "External system reported unhealthy status"
+    - logs: "See external endpoint logs"
+```
+
+# This makes it obvious how to define custom CRs for external endpoints and providers.
+
+# Only these two CRDs are required for upgrade gating. Health fields are optional and only included if relevant to the gate's criteria.
 
 ### CLI Experience
 
-- Primary UX via kubectl and small helper tooling:
-  - kubectl apply -f upgrade-gate.yaml (create/modify gates)
-  - kubectl get upgradegates, kubectl describe upgradegate <name>, kubectl get gateevaluations --selector=session=<id>
+- Primary UX via kubectl and helper tooling, operating on CRs:
+  - `kubectl apply -f upgrade-gate.yaml` (create/modify UpgradeGate CRs)
+  - `kubectl get upgradegates`, `kubectl describe upgradegate <name>`, `kubectl get gateevaluations --selector=session=<id>`
     - Example output:
       ```
       NAME         SESSION         PHASE      STATUS   VALUE   THRESHOLD   TS
       latency-gate upgrade-2025-01 canary     Fail     210ms   <200ms      2025-08-13T09:14:33Z
       error-gate   upgrade-2025-01 post       Pass     0.1%    <1%         2025-08-13T09:16:10Z
       ```
-  - kubectl logs -l app=gate-controller -n kube-system
+  - `kubectl logs -l app=gate-controller -n kube-system` for controller diagnostics
 - Az/installer convenience:
-  - az aks update --name <cluster> --resource-group <rg> --set properties.enableUpgradeGates=true (enablement toggle)
-  - az aks extensions install aks-gate-controller (one‑click controller install)
-- Developer ergonomics: provide `aks-gate` kubectl plugin (supports dry-run/simulation modes for safer experimentation; create/validate/simulate) and templates (latency, errors, OOM) to reduce JSON authoring.
-- Debugging: GateEvaluation objects include correlation IDs and timestamps to support traceable upgrade workflows. Builtin status fields and easy export of evaluation snapshots for post‑mortem.
+  - `az aks update --name <cluster> --resource-group <rg> --set properties.enableUpgradeGates=true` (toggle ARM enablement)
+  - `az aks extensions install aks-gate-controller` (controller install)
+- Developer ergonomics:
+  - `aks-gate` kubectl plugin supports dry-run/simulation, create/validate/simulate gates, and templates for latency, errors, OOM
+  - All CLI tooling supports managed, BYO, and external adapters (e.g., Datadog, mesh telemetry) via the adapters array in UpgradeGate CRs
+- Debugging:
+  - GateEvaluation CRs include correlation IDs, timestamps, and adapter source info (managed, webhook, external)
+  - Evaluation snapshots and breach events are easily exported for post-mortem
 
 ### Portal Experience
 
-- Portal shows enablement and high‑level inventory (which clusters have gating controller deployed and which gates are attached).
-- For CR-first fidelity: Portal links to the cluster explorer or GitOps repo for editing gate CRs; displays recent evaluation summaries (pass/fail rates, latest breach, session timeline with phase transitions, breach events, and final decisions) by ingesting controller metrics/logs.
-- Read-only gate details and one‑click links to drill into GateEvaluation sessions and diagnostic artifacts; authoritative gate definitions remain in-cluster; Portal supports visibility and onboarding but defers authoring to GitOps or CLI workflows.
-- Limitations: authoritative gate definitions remain in‑cluster; Portal augments visibility and onboarding (templates, creation wizards that emit CRs into repo/cluster).
+- Portal shows enablement status and high-level inventory:
+  - Which clusters have the gate controller deployed
+  - Which UpgradeGate CRs are attached (read-only view)
+- Evaluation summaries:
+  - Portal displays pass/fail rates, latest breach, session timeline, phase transitions, breach events, and final decisions by ingesting controller metrics/logs and GateEvaluation CRs
+  - Evaluation results from managed, BYO, and external adapters (including mesh and Datadog) are surfaced in the Portal
+- Authoritative gate definitions remain in-cluster as CRs:
+  - Portal links to cluster explorer or GitOps repo for editing gate CRs
+  - Creation wizards emit CRs into repo/cluster; onboarding is supported but authoring is deferred to CLI/GitOps
+- Limitations:
+  - Portal is read-only for gate definitions; all authoring and modification is done via CRs and CLI
+  - Adapter source (managed, webhook, external) is shown in evaluation details for transparency
 
-### Policy Experience
-
-- Governance via cluster-scoped policy + admission:
-  - Use Azure Policy to require the gate controller to be installed (audit/enforce).
-  - Use OPA/Gatekeeper constraints or Kubernetes admission policies to enforce allowed gate templates, scope restrictions, and required labels/annotations.
-    - Example: block UpgradeGate CRs with unmanaged endpoints or missing required labels.
-- Enforcement patterns:
-  - Audit mode to surface policy drift (no change to in‑cluster CRs).
-  - Enforce mode via Gatekeeper to block noncompliant UpgradeGate CRs (e.g., disallowed external endpoints, disallowed evaluation modes).
-- RBAC model:
-  - Gate authors: define UpgradeGate specs
-  - Publishers: adapters that emit GateEvaluations
-  - Operators: trigger upgrades and inspect sessions
-- Recommended ops: combine Azure Policy (controller presence + cluster config) with in‑cluster OPA constraints for fine‑grained, centralized governance while keeping gate definitions cluster-native.
-- This layered model enables centralized governance without sacrificing cluster-native flexibility.
-
-# Definition of Success
+## Definition of Success
 
 | Description                                 | Metric                                  | Target                |
 |---------------------------------------------|-----------------------------------------|-----------------------|
