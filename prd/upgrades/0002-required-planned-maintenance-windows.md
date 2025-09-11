@@ -22,7 +22,6 @@ AKS customers frequently report being surprised by cluster disruptions caused by
 
 These issues result in:
 - Unexpected application downtime during business hours
-- Inconsistent maintenance schedules across cluster fleets
 - Increased operational burden for multi-cluster environments
 - Customer loss of confidence in AKS reliability and predictability
 
@@ -30,12 +29,9 @@ These issues result in:
 
 ### Functional Goals
 
-Phase 1: promote maintenanceConfigurations to a top‑level resource; Phase 2: require maintenance windows for all clusters (Kubernetes version cutoff TBD).
-
 - Require planned maintenance window configuration for all new AKS clusters.
 - Enable reusable maintenance configurations across multiple clusters.
 - Support cross-regional resource coverage: maintenance configurations can be referenced by clusters in different regions, with consistent enforcement and time-zone–aware scheduling.
-- Promote `maintenanceConfigurations` to a top-level resource alongside `managedClusters`.
 - Provide migration path for existing clusters to adopt the new model.
 - Ensure customer awareness through Azure Advisor recommendations, API breaking change board approval, portal banners, and targeted communications to all customers.
 - Provide comprehensive support materials including enhanced documentation with Bicep/Terraform samples and knowledge base articles for troubleshooting.
@@ -162,7 +158,7 @@ The following migration takes effect whenever customers with existing maintenanc
   1. AKS creates corresponding top-level maintenance configuration resources (peer resource) even if a cluster has atleast 1 sub resource (legacy) configuration set.
   2. Cluster resources updated to include `maintenanceConfigurationIds` references
   3. All schedules and configurations preserved exactly as configured
-- No customer action required
+- No customer action requiredgit 
 
 **Example: Managed Cluster After Peer Resource Migration**
 
@@ -245,6 +241,8 @@ Given that these customers rely on AKS for automatic management and may not acti
 - **Monitoring Dashboard**: Track adoption rates and identify customers requiring proactive assistance
 
 ### Option 1: Required Maintenance Windows with Top-Level Resource (Recommended)
+
+#### Note: Phase 1: promote maintenanceConfigurations to a top‑level resource; Phase 2: require maintenance windows for all clusters (Kubernetes version cutoff TBD).
 
 **Implementation:**
 - Promote `maintenanceConfigurations` to a top-level Azure resource
