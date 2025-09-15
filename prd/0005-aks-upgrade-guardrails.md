@@ -331,9 +331,11 @@ Guardrails complement existing rollout strategies—making safe the default whil
 
 #### Kubernetes CRD Surface (Two-CRD Model)
 
-> The upgrade gating contract uses only two CRDs:
-> - `UpgradeGate`: Defines the gate, criteria, phases, and adapters (spec/definition).
-> - `GateEvaluation`: Reports the result of evaluating a gate for a specific upgrade session and phase (reporting/evaluation).
+> The guardrails contract uses only two CRDs:
+> - `HealthGate`: Defines the gate, criteria, phases, and adapters (spec/definition).
+> - `GateEvaluation`: Reports the result of evaluating a gate for a specific session and phase (reporting/evaluation).
+> 
+> Note: The CRD group is `health.guardrails.aks.io/v1` to reflect general node/cluster health guardrails, not just upgrades.
 
 **Field Options Reference**
 
@@ -341,7 +343,7 @@ Guardrails complement existing rollout strategies—making safe the default whil
 |-----------------|-----------------------------------------|-----------------------------------------------------------------------------|
 | scope           | cluster, nodepool, namespace            | Where the gate applies: cluster-wide, node pool, or namespace               |
 | evaluationMode  | Managed, Self-managed, None             | How evaluation is performed: managed (platform), self-managed (custom), none|
-| phaseBindings   | preflight, canary, post, post-drain, ...| Upgrade phases when the gate is evaluated                                   |
+| phaseBindings   | preflight, canary, post, post-drain, ...| Phases when the gate is evaluated (upgrade or other health events)          |
 | adapters.type   | AzureMonitor, Webhook, External         | Integration type: managed, webhook, or external provider                    |
 
 - **scope**: `cluster` (default, applies to the whole cluster), `nodepool` (applies to a specific node pool), `namespace` (applies to a namespace).
@@ -349,21 +351,21 @@ Guardrails complement existing rollout strategies—making safe the default whil
   - `Managed`: Evaluation is performed by managed platform sources (e.g., Azure Monitor, Managed Prometheus).
   - `Self-managed`: Evaluation is performed by custom/user sources (e.g., webhook, external provider).
   - `None`: No evaluation (gate is disabled).
-- **phaseBindings**: List of upgrade phases to evaluate the gate. Common values: `preflight`, `canary`, `post`. You may add custom phases as needed (e.g., `post-drain`).
+- **phaseBindings**: List of phases to evaluate the gate. Common values: `preflight`, `canary`, `post`. You may add custom phases as needed (e.g., `post-drain`, `daily`, `maintenance`).
 - **adapters.type**:
   - `AzureMonitor`: Managed adapter for Azure Monitor/Prometheus.
   - `Webhook`: User-defined webhook endpoint.
   - `External`: Third-party provider (Datadog, New Relic, etc.).
 
 ```yaml
-# UpgradeGate CRD (Spec/Definition)
-apiVersion: upgrade.guardrails.aks.io/v1
-kind: UpgradeGate
+# HealthGate CRD (Spec/Definition)
+apiVersion: health.guardrails.aks.io/v1
+kind: HealthGate
 metadata:
   name: custom-external-gate
   namespace: default
 spec:
-  description: "Block upgrade if external system signals unhealthy"
+  description: "Block operation if external system signals unhealthy"
   # Scope can be cluster, nodepool, or namespace for fine-grained gating
   scope: cluster # cluster | nodepool | namespace
   # scope: nodepool # Uncomment for node pool-specific gating
@@ -401,14 +403,14 @@ spec:
 
 ```yaml
 # GateEvaluation CRD (Reporting/Evaluation)
-apiVersion: upgrade.guardrails.aks.io/v1
+apiVersion: health.guardrails.aks.io/v1
 kind: GateEvaluation
 metadata:
   name: custom-external-gate-eval-20250909
   namespace: default
 spec:
   gateRef: custom-external-gate
-  sessionId: upgrade-20250909-001
+  sessionId: health-20250909-001
   phase: canary
   status: Fail
   observedValue: 0 # Example value from external system
@@ -419,9 +421,8 @@ spec:
     - logs: "See external endpoint logs"
 ```
 
-# This makes it obvious how to define custom CRs for external endpoints and providers.
-
-# Only these two CRDs are required for upgrade gating. Health fields are optional and only included if relevant to the gate's criteria.
+# This makes it obvious how to define general health guardrails CRs for external endpoints and providers.
+# Only these two CRDs are required for health gating. Health fields are optional and only included if relevant to the gate's criteria.
 
 ### CLI Experience
 
