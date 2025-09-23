@@ -12,21 +12,21 @@ last-updated: 2025-08-13
 
 # Overview
 
-Before this feature, AKS customers hand‑crafted blue/green or rolling flows and manually watched dashboards/alerts to decide whether to continue or stop an upgrade. Now, customers declare application and platform SLO guardrails through a simple, source‑agnostic Gate Signal API. The API supports:
+Before this feature, AKS customers hand‑crafted blue/green or rolling flows and manually watched dashboards/alerts to decide whether to continue or stop an upgrade. Now, customers declare application and platform SLO guardrails through Kubernetes‑native Custom Resources that capture health assessments. The system supports:
 - Managed Azure Monitor metrics/alerts (first‑class managed option, including Node Problem Detector and Managed Prometheus)
-- Bring‑your‑own (BYO) endpoints: self‑hosted Prometheus, OpenTelemetry collectors,  webhooks, or CRD‑aggregated health inside the cluster
+- Bring‑your‑own (BYO) endpoints: self‑hosted Prometheus, OpenTelemetry collectors, webhooks, or CRD‑aggregated health inside the cluster
 
-The upgrade engine evaluates these signals during preflight, canary, and post‑upgrade windows and will automatically abort—or roll back agent pools—on sustained anomalies. Gate lifecycle (attach, evaluate, decide) is cleanly separated from signal providers, so adding or swapping a monitoring backend does not require reauthoring gates.
+Any monitoring system or operator can write source‑agnostic `ClusterHealth` CRs that contain only the health verdict (healthy/degraded/unhealthy) without any reference to the monitoring source. The upgrade engine discovers and evaluates these health CRs during preflight, canary, and post‑upgrade windows and will automatically abort—or roll back agent pools—on sustained anomalies. Health assessment lifecycle (configure sources via `ClusterHealthSource`, evaluate health, record verdicts in `ClusterHealth`) is cleanly separated from signal providers, so adding or swapping a monitoring backend does not require reauthoring health criteria.
 
 ## Problem Statement / Motivation
 
 Built‑in AKS readiness checks (API, scheduling, quota, PDB) miss nuanced or delayed degradations (latency creep, error spikes, memory leaks) that emerge minutes or hours after node replacement or control plane changes. Operators today must babysit metrics and manually time an abort, increasing toil and risk. Blue/Green mechanics (drain batches, soak, cutover) improve safety but still lack integrated, metrics‑based intervention.
 
-We need first‑class, SLO‑aware guardrails:
-- Preflight: block starting when baseline health is already poor
-- Canary / per‑batch: catch early regressions before broad exposure
-- Post‑upgrade: detect delayed failures (e.g., OOM, latency growth)
-- Control plane: pre and post abort‑only gates to prevent risky control plane actions when SLOs are failing
+We need comprehensive, SLO‑aware health monitoring capabilities:
+- Preflight: prevent upgrade initiation when baseline health is already compromised
+- Canary / per‑batch: identify early regressions before widespread impact
+- Post‑upgrade: detect delayed degradations (e.g., memory leaks, performance deterioration)
+- Control plane: pre and post health assessments with abort capability to prevent risky control plane operations when SLOs are violated
 
 Extensibility (day one, not deferred):
 - A minimal, versioned Gate Signal schema normalizes inputs (status, value, threshold context, timestamps)
@@ -45,22 +45,22 @@ Example upgrade pain points:
 ## Goals / Non-Goals
 
 ### Functional Goals
-- Provide SLO‑gated upgrades for agent pools with preflight, canary, and post phases; on breach → abort or rollback (when rollback supported)
-- Provide control plane pre and post gates (abort‑only)
-- Support Azure Monitor (managed) including Node Problem Detector and Managed Prometheus, plus BYO endpoints (Prometheus, OTEL, webhook, CRD aggregator) from the start through a uniform Gate Signal contract
-- Allow multiple reusable gate resources bound to clusters via RBAC + Azure Policy
-- Support managed service mesh scenarios (L7 latency, error rate, retry/circuit breaker metrics, mTLS status) without app changes
-- Produce auditable, durable evaluation and breach events with clear timelines
-- Operate independently of pacing/soak mechanics and respect maintenance windows
-- Offer a documented adapter contract (schema + auth + idempotency) for any external or in‑cluster publisher to emit normalized health evaluations
+- Enable health-aware upgrades for agent pools with preflight, canary, and post-upgrade health assessments; automatically abort or roll back (where supported) when health deteriorates
+- Provide control plane health checks before and after upgrades (abort-only capability)
+- Support multiple monitoring sources through ClusterHealthSource CRs: Azure Monitor (managed) including Node Problem Detector and Managed Prometheus, plus BYO endpoints (self-hosted Prometheus, OpenTelemetry, webhooks, CRD aggregators) via source-agnostic ClusterHealth CRs
+- Enable reusable health monitoring configurations across clusters through declarative CRs managed via standard Kubernetes RBAC and GitOps workflows
+- Support managed service mesh scenarios (L7 latency, error rate, retry/circuit breaker metrics, mTLS status) without application modifications
+- Produce durable, queryable ClusterHealth CRs with timestamps, correlation IDs, and diagnostic context for audit and analysis
+- Maintain clean separation between health evaluation (ClusterHealthSource/ClusterHealth CRs) and upgrade pacing/maintenance windows
+- Document the ClusterHealth CR schema to enable any system (controllers, operators, external tools) to write health assessments
 
 ### Non-Goals
-- No fleet‑level multi‑cluster orchestration or ordering logic
-- No automated traffic shifting or full blue/green traffic management (upgrade engine only)
-- No application auto‑remediation (we stop / rollback only)
-- No policy‑driven alert authoring (policy governs gate attachment, not signal definition)
-- No guarantee of rollback for control plane (abort‑only by design)
-- No custom business workflow engine (decisions limited to proceed / hold / abort / rollback)
+- No fleet-level multi-cluster orchestration or sequencing logic
+- No automated traffic shifting or full blue/green traffic management (health monitoring only, not traffic control)
+- No application auto-remediation (system only pauses or rolls back upgrades)
+- No automated health criteria generation (users define their own SLOs and thresholds)
+- No guarantee of rollback for control plane upgrades (abort-only by design)
+- No custom business workflow engine (decisions limited to proceed/hold/abort/rollback based on health status)
 
 
 ## Customers and Business Impact
@@ -75,7 +75,7 @@ Current Customer Impact (baseline):Mar - July 2025
 | Delayed memory spikes         | 12              |
 
 In the last 4 months (March–July), there were 1,050 upgrade-related support cases. Of these, a significant portion were tied to workload breakage or post-upgrade latency/performance regressions, with issues often surfacing after upgrade completion rather than during the process.
-- Heavy operator burden maintaining bespoke blue/green flows and manual canary gates; inconsistent coverage across teams.
+- Heavy operator burden maintaining bespoke blue/green flows and manual canary monitoring; inconsistent coverage across teams.
 
 Managed Prometheus Adoption (Feb 16–Aug 13, 2025)
 - Internal clusters:
@@ -98,7 +98,7 @@ Business Impact / OKR Alignment:
 
 - Customer‑built blue/green, manual canaries, ad‑hoc alert checks
 - AKS Blue/Green Nodepool Upgrade (rolling out): native nodepool cutover; nodepool‑only; no app SLO gating; control plane unchanged
-- 3P CD systems with health gates (not integrated into AKS upgrade engine)
+- 3P CD systems with health monitoring (not integrated into AKS upgrade engine)
 - Gaps: fragmentation, high ops cost, no uniform governance, inconsistent quality
 
 ## Narrative/Personas
@@ -110,14 +110,14 @@ Business Impact / OKR Alignment:
 
 ## User Stories
 
-The user stories below are implementation‑agnostic and ensure support pre/during/post gates, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer).
+The user stories below are implementation‑agnostic and ensure support pre/during/post health monitoring, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer).
 | Persona | Story ID | User Story | Acceptance Criteria |
 |---------|---------:|-----------|---------------------|
-| Cluster Operator | CO-1 | As a Cluster Operator, I want to define and reuse health gates across multiple clusters so upgrades are consistently protected by organization-wide SLO policies. | Health gates can be attached to clusters and upgrades; health evaluations occur before, during, and after upgrades; gate definitions are reusable across clusters; organizational policies can enforce required gates; evaluation history is auditable and queryable. |
+| Cluster Operator | CO-1 | As a Cluster Operator, I want to define and reuse health monitoring configurations across multiple clusters so upgrades are consistently protected by organization-wide SLO policies. | Health monitoring configurations can be applied to clusters and upgrades; health evaluations occur before, during, and after upgrades; health monitoring definitions are reusable across clusters; organizational policies can enforce required health criteria; evaluation history is auditable and queryable. |
 | Cluster Operator | CO-2 | As a Cluster Operator, I want automated recovery and comprehensive diagnostics when an upgrade degrades cluster health so I can restore service quickly and understand what went wrong. | Upgrades automatically abort or roll back when health deteriorates; all decisions include timestamps and correlation IDs; health evaluation snapshots are retained for analysis; root cause investigation data is readily accessible. |
-| Basic Observability User | BU-1 | As a Basic Observability User, I want to enable health-gated upgrades with a single toggle and rely on sensible defaults so my clusters are protected without any monitoring expertise. | User enables health monitoring with one setting; default health checks automatically activate (node health, workload readiness, API health, resource pressure); health assessments run continuously; upgrades pause or abort automatically when health degrades; no manual configuration required. |
+| Basic Observability User | BU-1 | As a Basic Observability User, I want to enable health-aware upgrades with a single toggle and rely on sensible defaults so my clusters are protected without any monitoring expertise. | User enables health monitoring with one setting; default health checks automatically activate (node health, workload readiness, API health, resource pressure); health assessments run continuously; upgrades pause or abort automatically when health degrades; no manual configuration required. |
 | AMP Power User | PU-1 | As a Managed Prometheus Power User, I want my existing alert rules and metrics to automatically protect upgrades so my monitoring investment directly improves upgrade safety. | User's existing Prometheus rules integrate with health monitoring; custom alerts and thresholds are honored during upgrades; health decisions show which metrics triggered actions; monitoring dashboards display upgrade-related health events; evaluation history includes metric values and threshold breaches. |
-| Application Developer | AD-1 | As an App Developer, I want to define meaningful SLOs for my services that prevent upgrades only when real degradation occurs, avoiding false positives. | Health gates support application-specific SLOs (latency, error rate, availability); evaluation windows and aggregation methods reduce noise; breach events clearly show which SLOs failed and by how much; sensible defaults minimize false positives. |
+| Application Developer | AD-1 | As an App Developer, I want to define meaningful SLOs for my services that prevent upgrades only when real degradation occurs, avoiding false positives. | Health monitoring supports application-specific SLOs (latency, error rate, availability); evaluation windows and aggregation methods reduce noise; breach events clearly show which SLOs failed and by how much; sensible defaults minimize false positives. |
 
 Acceptance criteria common to all stories:
 - Health evaluations produce durable, queryable ClusterHealth CRs with timestamps, correlation IDs, and diagnostic context stored as Kubernetes resources.
@@ -295,33 +295,33 @@ After extensive evaluation, we chose the **Custom Resource (CR) Model** for AKS 
 
 **Key Decision Factors:**
 
-1. **Kubernetes-Native Experience**: The CR model leverages familiar patterns that Kubernetes operators already use daily. Teams can manage upgrade gates using standard tools (kubectl, Helm, ArgoCD) without learning new Azure-specific constructs.
+1. **Kubernetes-Native Experience**: The CR model leverages familiar patterns that Kubernetes operators already use daily. Teams can manage health monitoring configurations using standard tools (kubectl, Helm, ArgoCD) without learning new Azure-specific constructs.
 
-2. **True Multi-Cloud Portability**: Unlike ARM-based gates, CRs work identically across any Kubernetes distribution. Organizations running hybrid or multi-cloud environments can standardize their upgrade safety practices across AKS, EKS, GKE, and on-premises clusters.
+2. **True Multi-Cloud Portability**: Unlike ARM-based approaches, CRs work identically across any Kubernetes distribution. Organizations running hybrid or multi-cloud environments can standardize their upgrade safety practices across AKS, EKS, GKE, and on-premises clusters.
 
 3. **Rapid Innovation Path**: The CR model enables faster iteration and community contributions. We can ship improvements without ARM API versioning cycles, and the open-source community can contribute adapters for their preferred monitoring systems.
 
-4. **GitOps Excellence**: Health definitions stored as CRs integrate seamlessly with GitOps workflows. Teams can version, review, and deploy gate configurations alongside application manifests using their existing CI/CD pipelines.
+4. **GitOps Excellence**: Health definitions stored as CRs integrate seamlessly with GitOps workflows. Teams can version, review, and deploy health monitoring configurations alongside application manifests using their existing CI/CD pipelines.
 
-5. **Reduced Vendor Lock-in**: By keeping gate logic cluster-native, we preserve customer flexibility to migrate between cloud providers or Kubernetes distributions without rewriting their safety guardrails.
+5. **Reduced Vendor Lock-in**: By keeping health evaluation logic cluster-native, we preserve customer flexibility to migrate between cloud providers or Kubernetes distributions without rewriting their health monitoring guardrails.
 
 6. **Ecosystem Integration**: The CR model naturally supports the broad Kubernetes monitoring ecosystem—from Prometheus and Grafana to Datadog and New Relic—through simple adapter patterns rather than complex ARM integrations.
 
-While Option B offers stronger centralized governance through ARM, Option A's Kubernetes-native approach provides superior developer experience, faster adoption, and broader ecosystem compatibility—critical factors for achieving our goal of making safer upgrades the default across the Kubernetes community.
+While Option B offers stronger centralized governance through ARM, Option A's Kubernetes-native approach provides superior developer experience, faster adoption, and broader ecosystem compatibility—critical factors for achieving our goal of making health-aware upgrades the default across the Kubernetes community.
 
-## 📢 Announcement: Kubernetes-Native Upgrade Guardrails for AKS (Public Preview)
+## 📢 Announcement: Kubernetes-Native Health-Aware Upgrades for AKS (Public Preview)
 
 We're excited to introduce **SLO-Gated, Metric-Aware Upgrades** for AKS—a Kubernetes-native approach to upgrade safety that puts your workload health first.
 
 ### What's New
 
-AKS now supports declarative health-based upgrade gates through standard Kubernetes Custom Resources. Define your SLOs once, and let AKS automatically pause or roll back upgrades when metrics drift outside acceptable ranges. This CR-first design brings enterprise-grade upgrade safety to any Kubernetes cluster while preserving the flexibility teams love.
+AKS now supports declarative health-based upgrade guardrails through standard Kubernetes Custom Resources. Define your SLOs once, and let AKS automatically pause or roll back upgrades when metrics drift outside acceptable ranges. This CR-first design brings enterprise-grade upgrade safety to any Kubernetes cluster while preserving the flexibility teams love.
 
 ### Key Capabilities
 
 - **Universal Compatibility**: The same health definitions work across AKS, EKS, GKE, and self-managed clusters
-- **Source-Agnostic Health Monitoring**: Connect any observability platform—Azure Monitor, Prometheus, Datadog, New Relic—through our normalized health model
-- **GitOps-Ready**: Manage upgrade gates alongside your application manifests using familiar tools and workflows
+- **Source-Agnostic Health Monitoring**: Connect any observability platform—Azure Monitor, Prometheus, Datadog, New Relic—through our normalized ClusterHealth model
+- **GitOps-Ready**: Manage health monitoring configurations alongside your application manifests using familiar tools and workflows
 - **Automatic Protection**: Upgrades abort or roll back automatically when health deteriorates, no manual intervention required
 - **Flexible Evaluation Windows**: Configure preflight checks, canary monitoring, and post-upgrade soak periods
 
@@ -329,7 +329,8 @@ AKS now supports declarative health-based upgrade gates through standard Kuberne
 
 1. **Define Health Sources**: Create `ClusterHealthSource` CRs pointing to your monitoring systems
 2. **Record Health Status**: Controllers or operators write `ClusterHealth` CRs capturing cluster state
-3. **Automated Decisions**: The upgrade engine reads health CRs and makes safety decisions autonomously
+3. **Automated Decisions**: The upgrade engine reads ClusterHealth CRs and makes safety decisions autonomously
+
 
 ```yaml
 # Example: Connect to Managed Prometheus
@@ -704,16 +705,20 @@ The ARM API surface is intentionally minimal:
 # Requirements
 
 ## Functional Requirements
-- SLO-gated upgrades for agent pools (preflight, canary, post phases; abort/rollback on breach).
-- Control plane gates (abort-only).
-- Support for Azure Monitor, Prometheus, OTEL, webhook, CRD aggregator via uniform Gate Signal contract.
-- Multiple reusable gate resources bound via RBAC + Azure Policy.
-- Auditable evaluation and breach events; documented adapter contract for external/in-cluster publishers.
+- SLO-aware upgrades for agent pools with preflight, canary, and post-upgrade health assessments; automatic abort or rollback (where supported) when health deteriorates.
+- Control plane health checks before and after upgrades (abort-only capability).
+- Support for multiple monitoring sources through ClusterHealthSource CRs: Azure Monitor (managed) including Node Problem Detector and Managed Prometheus, plus BYO endpoints (self-hosted Prometheus, OpenTelemetry, webhooks, CRD aggregators).
+- Source-agnostic ClusterHealth CRs that capture health verdicts independent of monitoring provider.
+- Reusable health monitoring configurations across clusters through declarative CRs managed via standard Kubernetes RBAC and GitOps workflows.
+- Durable, queryable ClusterHealth CRs with timestamps, correlation IDs, and diagnostic context for audit and analysis.
 
 ## Test Requirements
-- Validate SLO-gated upgrade flows, breach detection, rollback, and audit event generation.
-- Ensure compatibility with managed and BYO signal sources.
-- Confirm policy enforcement and RBAC separation.
+- Validate health-aware upgrade flows including preflight checks, canary monitoring, post-upgrade assessment, and automated abort/rollback decisions.
+- Verify ClusterHealth CR creation and consumption from multiple monitoring sources (managed and BYO).
+- Confirm health evaluations occur at configured intervals with proper aggregation methods.
+- Test source-agnostic health verdict processing regardless of monitoring backend.
+- Validate RBAC controls for ClusterHealthSource management and ClusterHealth CR writing.
+- Ensure audit trail completeness with correlation IDs and timestamps across all health assessments.
 
 ## Compete (GKE, EKS)
 
