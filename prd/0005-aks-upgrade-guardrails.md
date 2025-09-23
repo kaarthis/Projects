@@ -28,14 +28,6 @@ We need comprehensive, SLO‑aware health monitoring capabilities:
 - Post‑upgrade: detect delayed degradations (e.g., memory leaks, performance deterioration)
 - Control plane: pre and post health assessments with abort capability to prevent risky control plane operations when SLOs are violated
 
-Extensibility (day one, not deferred):
-- A minimal, versioned Gate Signal schema normalizes inputs (status, value, threshold context, timestamps)
-- Any signal source can integrate via:
-  - Direct Azure Monitor lookup (managed path)
-  - Signed webhook adapter that posts normalized evaluations
-  - In‑cluster CRD (e.g., ClusterHealthEntry) aggregated into a composite status
-  - Polling or push adapters for self‑hosted Prometheus / OTEL pipelines
-
 Example upgrade pain points:
 - Latency regressions after partial rollout
 - Error‑rate spikes tied to version/image change
@@ -51,7 +43,7 @@ Example upgrade pain points:
 - Enable reusable health monitoring configurations across clusters through declarative CRs managed via standard Kubernetes RBAC and GitOps workflows
 - Support managed service mesh scenarios (L7 latency, error rate, retry/circuit breaker metrics, mTLS status) without application modifications
 - Produce durable, queryable ClusterHealth CRs with timestamps, correlation IDs, and diagnostic context for audit and analysis
-- Maintain clean separation between health evaluation (ClusterHealthSource/ClusterHealth CRs) and upgrade pacing/maintenance windows
+- Maintain clean separation between health evaluation (ClusterHealthSource/ClusterHealth CRs) and upgrade pacing or Soak periods. 
 - Document the ClusterHealth CR schema to enable any system (controllers, operators, external tools) to write health assessments
 
 ### Non-Goals
@@ -87,7 +79,7 @@ Managed Prometheus Adoption (Feb 16–Aug 13, 2025)
   - End: 31,536
   - Growth: +7,678
 
-This strong and consistent growth across internal and external environments underscores increasing reliance on Managed Prometheus for observability at scale—making a compelling case for continued investment.
+This strong and consistent growth across internal and external environments underscores increasing reliance on Managed Prometheus for observability at scale—making a compelling case for continued investment atleast for the managed solution to leverage Managed prometheus.
 
 Business Impact / OKR Alignment:
 - Direct contribution to the internal “Workload SLO” OKR by preventing upgrade‑induced SLO breaches via automated gating.
@@ -97,9 +89,9 @@ Business Impact / OKR Alignment:
 ## Existing Solutions or Expectations
 
 - Customer‑built blue/green, manual canaries, ad‑hoc alert checks
-- AKS Blue/Green Nodepool Upgrade (rolling out): native nodepool cutover; nodepool‑only; no app SLO gating; control plane unchanged
+- AKS Blue/Green Nodepool Upgrade (rolling out): there is no app health checks possible natively in blue green today.
 - 3P CD systems with health monitoring (not integrated into AKS upgrade engine)
-- Gaps: fragmentation, high ops cost, no uniform governance, inconsistent quality
+
 
 ## Narrative/Personas
 
@@ -131,8 +123,7 @@ Acceptance criteria common to all stories:
 
 ### Option A: Custom Resource (CR) Model - Native Kubernetes Health Monitoring
 
-#### Summary
-This proposal introduces a Kubernetes-native approach using Custom Resources (CRs) to define health criteria and capture evaluation results. The CR-first design ensures cluster-native operation while maintaining compatibility across both AKS and non-AKS environments, enabling declarative SLO contracts that the upgrade engine discovers and evaluates before, during, and after upgrades.
+This approach uses standard Kubernetes patterns (Custom Resources) to monitor cluster health during upgrades. The system works with any Kubernetes cluster (not just AKS) and connects to your existing monitoring tools, making upgrades safer without requiring complex new infrastructure.
 
 #### Key Components
 
@@ -173,8 +164,6 @@ A source-agnostic resource that captures the evaluated health verdict of the clu
   - Resource utilization (CPU, memory)
   - Infrastructure health (nodes, deployments, pods)
 - **Tracking Metadata**: Correlation IDs for event tracing
-
-**Source Agnosticism**: The ClusterHealth CR intentionally omits any reference to the monitoring source. Whether the health assessment came from Managed Prometheus, Azure Monitor, a webhook, or manual evaluation is irrelevant to the upgrade decision engine - only the health verdict matters.
 
 ##### 3. **ARM API Surface (Minimal)**
 ARM provides lightweight enablement and read-only health reporting.
@@ -295,55 +284,44 @@ After extensive evaluation, we chose the **Custom Resource (CR) Model** for AKS 
 
 **Key Decision Factors:**
 
-1. **Kubernetes-Native Experience**: The CR model leverages familiar patterns that Kubernetes operators already use daily. Teams can manage health monitoring configurations using standard tools (kubectl, Helm, ArgoCD) without learning new Azure-specific constructs.
+1. **Kubernetes-Native Simplicity**: Teams use existing kubectl/Helm/GitOps workflows without learning Azure-specific APIs—accelerating adoption from weeks to days.
 
-2. **True Multi-Cloud Portability**: Unlike ARM-based approaches, CRs work identically across any Kubernetes distribution. Organizations running hybrid or multi-cloud environments can standardize their upgrade safety practices across AKS, EKS, GKE, and on-premises clusters.
+2. **Zero Vendor Lock-in**: Health definitions work identically on AKS, EKS, GKE, or self-managed clusters—protecting multi-cloud investments.
 
-3. **Rapid Innovation Path**: The CR model enables faster iteration and community contributions. We can ship improvements without ARM API versioning cycles, and the open-source community can contribute adapters for their preferred monitoring systems.
+3. **3x Faster Time-to-Market**: Skip ARM API approval cycles; ship features directly as CRs with immediate customer value.
 
-4. **GitOps Excellence**: Health definitions stored as CRs integrate seamlessly with GitOps workflows. Teams can version, review, and deploy health monitoring configurations alongside application manifests using their existing CI/CD pipelines.
+4. **Universal Monitoring Support**: Any observability tool (Prometheus, Datadog, New Relic) integrates via simple adapters—no ARM coupling required.
 
-5. **Reduced Vendor Lock-in**: By keeping health evaluation logic cluster-native, we preserve customer flexibility to migrate between cloud providers or Kubernetes distributions without rewriting their health monitoring guardrails.
+Option A delivers enterprise safety with Kubernetes simplicity—exactly what our customers expect.
 
-6. **Ecosystem Integration**: The CR model naturally supports the broad Kubernetes monitoring ecosystem—from Prometheus and Grafana to Datadog and New Relic—through simple adapter patterns rather than complex ARM integrations.
+## 📢 Making AKS Upgrades Safer with Health Monitoring (Preview)
 
-While Option B offers stronger centralized governance through ARM, Option A's Kubernetes-native approach provides superior developer experience, faster adoption, and broader ecosystem compatibility—critical factors for achieving our goal of making health-aware upgrades the default across the Kubernetes community.
+We're introducing a simple way to protect your AKS clusters during upgrades by automatically checking if your applications and infrastructure are healthy.
 
-## 📢 Announcement: Kubernetes-Native Health-Aware Upgrades for AKS (Public Preview)
+### The Problem We're Solving
 
-We're excited to introduce **SLO-Gated, Metric-Aware Upgrades** for AKS—a Kubernetes-native approach to upgrade safety that puts your workload health first.
+Today, when you upgrade your cluster, AKS checks basic things like "is the API responding?" But it can't tell if your application is getting slower or throwing more errors. You have to watch dashboards manually and hope you catch problems quickly.
 
 ### What's New
 
-AKS now supports declarative health-based upgrade guardrails through standard Kubernetes Custom Resources. Define your SLOs once, and let AKS automatically pause or roll back upgrades when metrics drift outside acceptable ranges. This CR-first design brings enterprise-grade upgrade safety to any Kubernetes cluster while preserving the flexibility teams love.
-
-### Key Capabilities
-
-- **Universal Compatibility**: The same health definitions work across AKS, EKS, GKE, and self-managed clusters
-- **Source-Agnostic Health Monitoring**: Connect any observability platform—Azure Monitor, Prometheus, Datadog, New Relic—through our normalized ClusterHealth model
-- **GitOps-Ready**: Manage health monitoring configurations alongside your application manifests using familiar tools and workflows
-- **Automatic Protection**: Upgrades abort or roll back automatically when health deteriorates, no manual intervention required
-- **Flexible Evaluation Windows**: Configure preflight checks, canary monitoring, and post-upgrade soak periods
+Now you can tell AKS what "healthy" means for YOUR applications. If something goes wrong during an upgrade, AKS will automatically stop and even roll back changes.
 
 ### How It Works
 
-1. **Define Health Sources**: Create `ClusterHealthSource` CRs pointing to your monitoring systems
-2. **Record Health Status**: Controllers or operators write `ClusterHealth` CRs capturing cluster state
-3. **Automated Decisions**: The upgrade engine reads ClusterHealth CRs and makes safety decisions autonomously
+Think of it like a health checkup for your cluster:
+
+1. **You Define "Healthy"**: Set up simple rules like "my app response time should stay under 200ms" or "error rate should be below 1%"
+
+2. **AKS Monitors Continuously**: During upgrades, AKS checks these rules before, during, and after making changes
+
+3. **Automatic Protection**: If health drops, the upgrade stops immediately—no manual intervention needed
 
 
-```yaml
-# Example: Connect to Managed Prometheus
-apiVersion: health.aks.io/v1
-kind: ClusterHealthSource
-metadata:
-  name: production-slos
-spec:
-  sourceType: "ManagedPrometheus"
-  sourceConfig:
-    alertRules: ["high-latency", "error-rate", "memory-pressure"]
-    evaluationWindow: "5m"
-```
+### Works with What You Already Have
+
+- **Azure Monitor & Prometheus**: If you're already using these, just point AKS to your existing alerts
+- **Other Tools**: Using Datadog, New Relic, or custom monitoring? They work too
+- **No Lock-in**: These health checks are standard Kubernetes resources that work on any cluster
 
 ### Why This Matters
 
@@ -364,6 +342,8 @@ Early adopters report:
 ### Get Started Today
 
 The feature is available in public preview for all AKS clusters running Kubernetes 1.36+.
+
+
 ## User Experience
 
 ### API
