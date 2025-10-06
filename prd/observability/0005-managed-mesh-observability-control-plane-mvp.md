@@ -10,72 +10,89 @@ approved-by: []
 
 # Overview
 
-This public preview delivers a unified observability experience for AppLink customers that mirrors the AKS monitoring model. Customers get comprehensive visibility into both Istio control plane (MCP) and data plane metrics through Azure Monitor Managed Prometheus, aligning with the familiar AKS customer experience. Both metric types are available in the same Azure Monitor workspace, enabling seamless correlation and troubleshooting of their service mesh.
+This public preview delivers a unified observability experience for Applink customers that mirrors the AKS monitoring model. Customers get comprehensive visibility into both Mesh control plane (MCP) and data plane metrics through Azure Monitor Managed Prometheus, aligning with the familiar AKS customer experience. Both metric types are available in the same Azure Monitor workspace in raw Prometheus format, enabling seamless correlation and troubleshooting of their service mesh.
 
 ## Scope
 
-This PRD defines the public preview for AppLink observability covering both control plane and data plane metrics. It focuses on delivering an AKS-aligned customer experience through:  
-- **Unified metrics collection**: Both Istio control plane (MCP) and data plane (ztunnel, CNI) metrics collected and available in the same Azure Monitor workspace via Managed Prometheus.  
-- **AKS-aligned experience**: Customers configure observability using the same Azure Monitor Managed Prometheus integration pattern familiar to AKS users.  
-- **Secure access**: Authenticated endpoints for scraping control plane metrics using OIDC-based tokens.  
-- **Standard Prometheus format**: All metrics exposed in standard Prometheus format, compatible with Azure Monitor and BYO Prometheus collectors.  
+This PRD defines the public preview for Applink observability covering both control plane and data plane metrics. It focuses on delivering an AKS-aligned customer experience through:
 
-Out of scope for public preview: portal UI for control plane-specific metrics, custom alert/recording rules, or extensibility of scrape targets beyond Istio components.
+- **Unified metrics collection**: Both Mesh control plane (MCP) and data plane (ztunnel, CNI) metrics collected and available in the same Azure Monitor workspace via Managed Prometheus
+- **AKS-aligned experience**: Customers configure observability using the same Azure Monitor Managed Prometheus integration pattern familiar to AKS users via configmaps
+- **Standard Prometheus format**: All metrics exposed in standard Prometheus format, compatible with Azure Monitor and BYO Prometheus collectors
+
+**Out of scope for public preview**: 
+- Portal UI for control plane-specific metrics
+- Custom alert/recording rules
+- Extensibility of scrape targets beyond Managed Mesh components
+- BYO Prometheus experience
+- Hosted or BYO mesh visualization tools such as kiali
+- Multi-cluster experience
+- Waypoint proxy metrics
 
 ## Glossary
 
 | Term | Definition |
 |------|------------|
-| MCP (Mesh Control Plane) | Azure-hosted environment running Istio control plane (Istiod) for AppLink, isolated from customer clusters. |
-| Data Plane | Istio dataplane (ztunnel, Istio CNI) running inside customer clusters. |
-| VMAgent | Prometheus-compatible agent for metrics scraping and remote write. |
-| VMSingle | Lightweight metrics storage and federation service used to persist Istio control plane metrics. |
-| Auth Proxy | Authentication and rate-limiting layer validating OIDC tokens before granting access to control plane metrics. |
+| **MCP (Mesh Control Plane)** | Azure-hosted environment running the Istio control plane (**istiod**), isolated from customer clusters |
+| **Ambient Mesh** | Istio's sidecar-less service mesh mode that uses ztunnel for L4 and optional waypoint proxies for L7 capabilities. AppLink supports ambient mode only |
+| **Data Plane** | Istio dataplane components (such as **ztunnel**, **Waypoint Proxy**, and **Istio CNI**) running inside customer clusters to handle service-to-service communication |
+| **istiod** | The core Istio control plane component responsible for service discovery, configuration distribution, and certificate management for the mesh |
+| **ztunnel** | Lightweight Layer-4 proxy that manages secure, zero-trust connections between workloads in Ambient Mesh |
+| **Waypoint Proxy** | Layer-7 Envoy proxy deployed per namespace or ServiceAccount to enforce policies and collect telemetry for HTTP/gRPC traffic |
+| **Istio CNI** | The CNI (Container Network Interface) plugin used by Istio to set up pod networking and traffic redirection without requiring an init container for iptables |
 
 ## Problem Statement / Motivation
 
-AppLink runs Istio with an external control plane: Istiod operates in the MCP, while the data plane (ztunnel, CNI) runs in customer clusters. While data plane components run in the cluster, customers need a unified observability solution that provides visibility into both control plane and data plane metrics, matching the integrated monitoring experience AKS customers expect.
+AKS customers monitor their clusters through a unified experience: all operational telemetry lands in one place by default, making it straightforward to understand cluster health and diagnose issues. Applink extends AKS clusters with a managed service mesh, but the mesh control plane (Istiod) runs in an Azure-hosted environment separate from the customer's cluster. If AppLink telemetry doesn't integrate into the same monitoring flow, customers lose the unified cluster operations view they rely on.
 
-Without this unified experience, customers face:
-- **Fragmented visibility**: No single pane of glass for mesh health across control and data plane components
-- **Complex troubleshooting**: Inability to correlate control plane decisions with data plane behavior
-- **AKS experience gap**: Monitoring pattern differs from established AKS Managed Prometheus workflows
+Without this integration, customers face:
+
+- **Fragmented cluster visibility**: Mesh metrics separated from cluster metrics breaks the single view of what's running in their cluster, making it hard to answer "is it the mesh or the app?"
+- **Incomplete mesh observability**: Difficult to see both control plane (Istiod in Azure) and data plane (ztunnel, CNI in-cluster) health together, slowing incident diagnosis
+- **Monitoring workflow disruption**: Deviates from the experience customers already use for AKS, requiring custom scrapes, duplicate dashboards, and parallel pipelines
+
+Customers need a unified observability solution that integrates AppLink control plane and data plane metrics into their existing cluster monitoring experience, preserving the operational simplicity they expect from AKS.
 
 This public preview delivers comprehensive mesh observability through Azure Monitor Managed Prometheus, providing authenticated access to both control plane and data plane metrics in a unified workspace, aligned with the AKS customer experience.
 
 ## Goals / Non-Goals
 
 ### Functional Goals
-- Deliver unified control plane and data plane metrics in the same Azure Monitor workspace via Managed Prometheus.  
-- Align the customer configuration experience with AKS Managed Prometheus patterns.  
-- Enable customers to scrape both Istio control plane and data plane metrics through authenticated endpoints.  
-- Expose all mesh metrics in standard Prometheus format consumable by Azure Monitor Managed Prometheus or BYO Prometheus collectors.  
+
+- Integrate AppLink mesh metrics into customers' existing cluster monitoring workspace, preserving the unified AKS observability experience
+- Provide visibility into both control plane and data plane mesh health within the same workspace customers use for cluster operations
+- Align the customer configuration experience with AKS Managed Prometheus patterns
+- Enable customers to scrape both Istio control plane and data plane metrics through authenticated endpoints
+- Expose all mesh metrics in standard Prometheus format consumable by Azure Monitor Managed Prometheus or BYO Prometheus collectors
 
 ### Non-Functional Goals
-- Ensure low-latency metrics availability (≤30s scrape interval).  
-- Enforce per-client rate limits for stability and abuse prevention.  
-- Provide reliable authentication and authorization without requiring Azure resource integration.  
+
+- Ensure metrics are available with minimal latency 
+- Maintain system stability and reliability
 
 ### Non-Goals
-- Portal visualization or custom dashboards specific to mesh metrics (customers use Azure Monitor workspace query/visualization).  
-- Pre-configured alerting or recording rules for mesh metrics.  
-- Fine-grained access control (per-metric or per-namespace).  
-- Customer ability to extend scrape targets beyond Istio control plane and data plane components.  
-- Shoebox (Geneva) metrics integration or migration (out of scope for this PRD; will be addressed separately).  
+
+- Portal visualization or custom dashboards specific to mesh metrics (customers use Azure Monitor workspace query/visualization)
+- Pre-configured alerting or recording rules for mesh metrics
+- Fine-grained access control (per-metric or per-namespace)
+- Customer ability to extend scrape targets beyond Istio control plane and data plane components
+- Shoebox (Geneva) metrics integration or migration (out of scope for this PRD; will be addressed separately)
+- Waypoint proxy metrics (will be addressed in later releases)
+- Multi-cluster experience (out of scope for this PRD and will be addressed in separately)
 
 ## Narrative / Personas
 
-### Sarah Chen - Platform Engineer
+### Penny - Platform Engineer
 
 **The Black Box Problem**
 
-As a platform engineer, I roll out AppLink's managed mesh on AKS and must prove it is production-ready. I see data plane metrics (ztunnel, CNI) in-cluster, but the control plane (Istiod in Azure) is opaque. During deploys, config sync delays occur and I cannot tell whether the problem is in the data plane or the control plane. I stitch timestamps from disconnected systems while leadership asks, "Is the mesh or the app broken?" I cannot answer because half the picture is missing.
+As a platform engineer, I roll out Applink's managed mesh on AKS and must prove it is production-ready. When I enable the mesh, none of the telemetry shows up in my cluster monitoring workspace. The control plane (Istiod in Azure) is completely opaque, and data plane components (ztunnel, CNI) aren't integrated into my existing observability flow. During deploys, config sync delays occur and I cannot tell whether the problem is in the mesh or my app. Leadership asks, "Is it production-ready?", and I can't answer because I have no visibility into what's happening.
 
 **The Monitoring Fragmentation**
 
-I already use Azure Monitor Managed Prometheus for AKS. For AppLink mesh, I build custom data plane scrapes, and control plane metrics are unavailable. I cannot create one dashboard for full mesh health, and every reliability report comes with caveats. I need the AKS experience: control and data plane metrics in my existing workspace, configured once and queryable everywhere.
+I already use Azure Monitor Managed Prometheus for my AKS cluster—everything from node health to workload metrics lands in one workspace. When I enable Applink mesh, I expect mesh telemetry to show up there too. Instead, control plane metrics are unavailable, and I have to build custom scrapes for data plane components. My unified cluster view is broken. I need mesh metrics in my existing workspace, configured the same way, so I can see the full picture of what's running in my cluster.
 
-### Marcus Rodriguez - Site Reliability Engineer
+### Sam - Site Reliability Engineer
 
 **The 3 AM Escalation**
 
@@ -83,82 +100,275 @@ As an SRE, I get paged when things break. At 3 AM, payments timed out. Tracing p
 
 **The Root Cause Guessing Game**
 
-When incidents hit, I must locate the fault fast. In AKS I can isolate app, node, or Kubernetes control plane. In AppLink mesh I am guessing: is Istiod keeping up, are cert rotations succeeding, is the control plane overloaded? I need immediate metrics: config push latency, proxy connection success, and control plane resource use, shown alongside ztunnel errors on the same dashboard.
+When incidents hit, I must locate the fault fast. In AKS I can query one workspace to isolate app, node, or Kubernetes control plane issues. With Applink mesh, I lose that unified view: is Istiod keeping up, are cert rotations succeeding, is the control plane overloaded? I need mesh metrics—config push latency, proxy connection success, control plane resource use—in the same workspace as my cluster metrics so I can correlate and diagnose quickly.
 
-### Priya Sharma - Application Developer
+### Andrew - Application Developer
 
 **The Configuration Mystery**
 
-As a developer, I want the mesh to just work. I deploy a canary to shift 10% to v2, but traffic does not move. Pods are healthy and the VirtualService looks right. I cannot confirm whether the control plane received, validated, and pushed my config. I waste hours on app code when the issue may be propagation delay. This opacity makes me hesitant to use mesh features.
+As a developer, I want the mesh to just work. I deploy a canary to shift 10% to v2, but traffic does not move. Pods are healthy and the VirtualService looks right. Without mesh telemetry in my monitoring tools, I cannot confirm whether the control plane received, validated, and pushed my config. I waste hours debugging my app code when the issue might be mesh configuration propagation. This lack of visibility makes me hesitant to use mesh features.
 
 **The Performance Black Hole**
 
-After enabling mesh features, response times climb. Is latency in my code, proxies, or the control plane? Data plane metrics show request durations, but control plane delays in pushing routes are invisible. I need end-to-end metrics to rule out the mesh quickly and refocus on my service.
+After enabling mesh features, response times climb. Is latency in my code, the mesh, or something else? I check my usual monitoring workspace, but there's no mesh telemetry there to help me rule out the service mesh. I can't quickly isolate whether the problem is mine or the platform's, so incident diagnosis drags on and I lose confidence in the mesh.
 
-## Customers and Business Impact
+## Customer and Business Impact
 
-- **Reduces friction for AKS customers**: Familiar Managed Prometheus configuration pattern accelerates AppLink adoption.  
-- **Improves trust**: Comprehensive visibility into both control plane and data plane health builds confidence in the managed service.  
-- **Reduces support load**: Unified observability enables customers to self-diagnose issues across the full mesh stack.  
-- **Accelerates troubleshooting**: Correlation between control plane and data plane metrics reduces MTTR for incidents.  
+### Customer Impact
+
+- **Preserves operational simplicity**: Mesh metrics integrate into existing cluster monitoring workflows without introducing new tools or configuration patterns
+- **Maintains unified cluster visibility**: Customers retain the single-workspace experience they rely on for cluster operations, now extended to include mesh health
+- **Enables faster troubleshooting**: Correlation between cluster, control plane, and data plane metrics in one place reduces time spent diagnosing incidents
+- **Builds confidence in the mesh**: Complete visibility into control plane and data plane health enables self-service troubleshooting and reduces uncertainty
+
+### Business Impact
+
+- **Accelerates AppLink adoption**: Familiar monitoring patterns reduce friction for AKS customers evaluating and deploying managed mesh
+- **Drives AKS platform usage**: Improves adoption of Azure Monitor Managed Prometheus and establishes a clear path to other AKS solutions like Managed Grafana
+- **Reduces support load**: Unified observability enables customers to self-diagnose mesh issues, lowering escalations and support costs
+- **Strengthens competitive position**: Delivers integrated mesh observability that competitors with fragmented control plane visibility cannot match
 
 ## Existing Solutions or Expectations
 
-- **AKS Managed Prometheus pattern**: AKS customers configure Azure Monitor Managed Prometheus to collect cluster metrics (including control plane metrics for managed clusters) in a unified workspace. AppLink customers expect the same streamlined experience.  
-- **Current AppLink gap**: Data plane metrics require manual configuration, and control plane metrics are not exposed in Prometheus format. No unified collection mechanism exists.  
-- **Shoebox metrics**: Geneva-based platform metrics exist in a separate blade with limited queryability and no Prometheus compatibility. **Note:** Shoebox metrics integration/migration is out of scope for this PRD and will be addressed in a separate workstream.  
-- **Customer expectation**: AppLink monitoring should mirror the AKS experience: simple Managed Prometheus integration that captures both control plane and data plane metrics in one workspace.
+- **AKS Managed Prometheus pattern**: AKS customers configure Azure Monitor Managed Prometheus to collect cluster metrics (including control plane metrics for managed clusters) in a unified workspace. Applink customers expect the same streamlined experience
+- **Current Applink gap**: Data plane metrics require manual configuration, and control plane metrics are not exposed in Prometheus format. No unified collection mechanism exists
+- **Shoebox metrics**: Geneva-based platform metrics exist in a separate blade with limited queryability and no Prometheus compatibility. **Note:** Shoebox metrics integration/migration is out of scope for this PRD and will be addressed in a separate workstream
+- **Customer expectation**: Applink monitoring should mirror the AKS experience: simple Managed Prometheus integration that captures both control plane and data plane metrics in one workspace
 
 ## Proposal
 
-- Deliver unified mesh observability aligned with the AKS Managed Prometheus experience:  
-  - **Control Plane Metrics:** `/metrics` endpoint on MCP ingress exposes Istio control plane metrics in Prometheus format with OIDC-based authentication.  
-  - **Data Plane Metrics:** Prometheus scrape targets for data plane components (ztunnel, CNI) discoverable and scrapable from customer clusters.  
-  - **Unified Configuration:** Customers configure a single Azure Monitor Managed Prometheus instance to collect both control plane and data plane metrics, mirroring the AKS setup pattern.  
-  - **Security:** Authenticated access using OIDC-issued Kubernetes service account tokens; per-client rate limits applied.  
-  - **Compatibility:** Works seamlessly with Azure Monitor Managed Prometheus (primary path for public preview) and BYO Prometheus collectors.  
-  - **Public Preview Scope:** Focus on Azure Monitor Managed Prometheus integration; no custom portal UI or alerting.  
+Integrate AppLink mesh telemetry into the existing AKS cluster monitoring experience:
+
+- **Unified workspace integration:** Both control plane (Istiod) and data plane (ztunnel, CNI) metrics land in the same Azure Monitor workspace customers already use for cluster operations
+- **AKS-aligned configuration:** Customers configure mesh metrics using the same pattern they use for AKS cluster monitoring, preserving operational simplicity
+- **Standard Prometheus format:** All metrics exposed in standard Prometheus format, compatible with Azure Monitor Managed Prometheus and BYO Prometheus collectors
+- **Public Preview Scope:** Focus on Azure Monitor Managed Prometheus integration; no custom portal UI or alerting 
 
 ## User Experience
 
-### Configuration (AKS-Aligned Pattern)
+AKS customers enable cluster monitoring by installing the Azure Monitor Managed Prometheus add-on (`ama-metrics`), which automatically begins collecting standard cluster metrics (kubelet, Kubernetes control plane components, etc.) and sends them to a configured workspace. Customers then tune what gets collected using a simple configmap in their cluster.
 
-Customers follow the familiar AKS Managed Prometheus setup:
+AppLink mesh metrics follow this same pattern. However, mesh metric collection is **off by default** and customers must explicitly enable the AppLink targets they want. This gives customers control over ingestion costs while preserving the familiar AKS configuration workflow.
 
-1. **Enable Azure Monitor Managed Prometheus** on their Azure Monitor workspace (same workspace used for AKS clusters if applicable).
-2. **Configure scraping for AppLink member cluster**:  
-   - Data plane components (ztunnel, CNI) are auto-discovered via Kubernetes service discovery.  
-   - Control plane endpoint `<mcp-fqdn>/metrics` is added as a static scrape target with OIDC authentication.
-3. **View unified metrics**: Both control plane and data plane metrics appear in the Azure Monitor workspace, queryable via PromQL in Grafana or Azure Monitor query interface.
+### Enable cluster monitoring
 
-### Sample Prometheus Configuration
+Customers enable Azure Monitor Managed Prometheus on their AKS cluster using the Azure CLI. See the [official documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-enable?tabs=cli#enable-prometheus-and-grafana) for complete details and additional options.
 
-```yaml
-# Data plane scraping (Kubernetes service discovery)
-- job_name: 'applink-data-plane'
-  kubernetes_sd_configs:
-    - role: pod
-      namespaces:
-        names: ['kube-system', 'aks-istio-system']
-  relabel_configs:
-    - source_labels: [__meta_kubernetes_pod_label_app]
-      regex: ztunnel|istio-cni
-      action: keep
+```bash
+### Use default Azure Monitor workspace
+az aks create/update --enable-azure-monitor-metrics --name <cluster-name> --resource-group <cluster-resource-group>
 
-# Control plane scraping (authenticated endpoint)
-- job_name: 'applink-control-plane'
-  static_configs:
-    - targets: ['<mcp-fqdn>']
-  metrics_path: '/metrics'
-  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+### Use existing Azure Monitor workspace
+az aks create/update --enable-azure-monitor-metrics --name <cluster-name> --resource-group <cluster-resource-group> --azure-monitor-workspace-resource-id <workspace-name-resource-id>
+
+### Use an existing Azure Monitor workspace and link with an existing Grafana workspace
+az aks create/update --enable-azure-monitor-metrics --name <cluster-name> --resource-group <cluster-resource-group> --azure-monitor-workspace-resource-id <azure-monitor-workspace-name-resource-id> --grafana-resource-id <grafana-workspace-name-resource-id>
+
+### Use optional parameters
+az aks create/update --enable-azure-monitor-metrics --name <cluster-name> --resource-group <cluster-resource-group> --ksm-metric-labels-allow-list "namespaces=[k8s-label-1,k8s-label-n]" --ksm-metric-annotations-allow-list "pods=[k8s-annotation-1,k8s-annotation-n]"
 ```
 
+Once enabled, the `ama-metrics` add-on is installed and begins collecting standard AKS cluster metrics into the configured workspace.
+
+### Metrics Configuration via ConfigMap
+
+Customers configure AppLink observability using the same **ama-metrics-settings-configmap** pattern they use for AKS cluster monitoring.    
+**Prerequisites**: Azure Monitor Managed Prometheus must be enabled on the cluster with the `ama-metrics` add-on installed.    
+The Azure Monitor Managed Prometheus add-on reads this configuration to enable/disable metric collection for both control plane and data plane components.
+
+#### Default Configuration
+
+For customers with Managed Prometheus enabled, the following Applink targets are configured by default:
+
+```diff
+default-scrape-settings-enabled: |-
+    kubelet = true
+    coredns = false
+    cadvisor = true
+    kubeproxy = false
+    controlplane-apiserver = true
+    controlplane-kube-controller-manager = false
+    controlplane-kube-scheduler = false
+    controlplane-etcd = true
+    controlplane-cluster-autoscaler = false
+    kubestate = true
+    
++   ztunnel = false
++   istio-cni = false
++   controlplane-istiod = false
+```
+
+**Available Applink targets:**
+
+- **ztunnel**: Ambient mesh data plane metrics (traffic telemetry, connection stats)
+- **istio-cni**: CNI plugin metrics (enable for CNI-specific troubleshooting)
+- **controlplane-istiod**: Mesh control plane metrics (pilot metrics, configuration state)
+
+### Configuration Levels
+
+Applink metrics support three configuration levels in increasing order of granularity, matching the AKS observability model:
+
+#### 1. Off
+
+No metrics collected from a specific component. This is the **default state** for all Applink targets. Customers must explicitly enable targets in the scrape configuration.
+
+```yaml
+default-scrape-settings-enabled: |-
+    ztunnel = false
+    istio-cni = false
+    controlplane-istiod = false
+```
+
+#### 2. Essential Metrics (Minimal Ingestion Profile)
+
+Customers receive curated metrics for common observability and debugging scenarios with optimized cost. This is the default behavior when a target is enabled.
+To enable essential metrics, set the corresponding component to true and ensure minimal ingestion is enabled:
+
+```yaml
+default-scrape-settings-enabled: |-
+    ztunnel = true
+    istio-cni = true
+    controlplane-istiod = true
+
+minimal-ingestion-profile: |-
+    true
+```
+
+#### 3. All Metrics
+
+Customers receive all available metrics from the corresponding component without filtering. Set `minimal-ingestion-profile = false` and enable the target:
+
+```yaml
+minimal-ingestion-profile: |-
+    false
+
+default-scrape-settings-enabled: |-
+    ztunnel = true
+    istio-cni = true
+    controlplane-istiod = true
+```
+
+### Custom Metric Selection
+
+In both Essential Metrics and All Metrics modes, customers can scrape additional specific metrics by adding them to the `default-metrics-keep-list`:
+
+```yaml
+minimal-ingestion-profile: |-
+    true
+
+default-metrics-keep-list: |-
+    istio_request_bytes_bucket
+    istio_agent_pilot_xds_expired_nonce
+
+default-scrape-settings-enabled: |-
+    ztunnel = true
+    controlplane-istiod = true
+```
+
+### Cluster Label Alignment
+
+The implementation respects the **cluster-alias** setting in the configmap. If no cluster alias is specified, Applink metrics use the same cluster label as existing Azure Monitor metrics, ensuring consistent labeling across all metrics in the workspace for seamless querying and correlation.
+
+### Minimal Ingestion Profiles
+
+#### Ztunnel Minimal Profile
+
+When `ztunnel = true` and `minimal-ingestion-profile = true`, the following metrics are collected:
+
+| Metric | Purpose |
+|--------|---------|
+| `istio_build` | Version and build information for support and compatibility verification |
+| `istio_xds_connection_terminations_total` | XDS connection health monitoring; expected to spike every ~30min per instance |
+| `istio_xds_message_total` | XDS push frequency by resource type (Workloads, Addresses, Authorizations, DNS Tables) |
+| `istio_tcp_connections_opened_total` | TCP connection establishment rate |
+| `istio_tcp_connections_closed_total` | TCP connection closure rate |
+| `istio_tcp_sent_bytes_total` | Outbound traffic volume |
+| `istio_tcp_received_bytes_total` | Inbound traffic volume |
+| `istio_dns_requests_total` | DNS query rate through ztunnel |
+| `workload_manager_active_proxy_count` | Number of active proxies managed by ztunnel |
+| `workload_manager_pending_proxy_count` | Number of proxies pending configuration (expected to converge to zero) |
+
+**Coverage**: These metrics support community dashboards and provide visibility into:
+
+- Control plane connectivity health (XDS)
+- Traffic flow patterns (TCP connections and throughput)
+- DNS resolution activity
+- Workload lifecycle management
+
+#### Istio CNI Minimal Profile
+
+When `istio-cni = true` and `minimal-ingestion-profile = true`, the following metrics are collected:
+
+| Metric | Purpose |
+|--------|---------|
+| `istio_cni_install_ready` | CNI plugin installation readiness status |
+| `istio_cni_installs_total` | Count of CNI installation attempts and outcomes |
+| `nodeagent_reconcile_events_total` | Node agent reconciliation loop health |
+| `ztunnel_connected` | Ztunnel connectivity status from CNI perspective |
+
+**Coverage**: These metrics provide essential visibility into:
+
+- CNI plugin installation and health
+- Node agent operational status
+- Ztunnel-CNI integration health
+
+#### Istiod (Control Plane) Minimal Profile
+
+When `controlplane-istiod = true` and `minimal-ingestion-profile = true`, the following metrics are collected:
+
+| Metric | Purpose |
+|--------|---------|
+| `istio_build` | Version and build information for control plane |
+| `pilot_xds_pushes` | XDS push rate by resource type (CDS, EDS, LDS, RDS, etc.) |
+| `pilot_xds` | Total number of connected proxies to the control plane |
+| `pilot_total_xds_rejects` | Configuration rejections by type; indicates invalid or incompatible config |
+| `pilot_total_xds_internal_errors` | Internal push errors; potential control plane issues requiring investigation |
+| `pilot_xds_push_time_bucket` | Push latency histogram; critical for diagnosing control plane performance |
+| `galley_validation_passed` | Successful webhook validations |
+| `galley_validation_failed` | Failed webhook validations; indicates configuration issues |
+
+**Coverage**: These metrics support community dashboards and provide visibility into:
+
+- Control plane health and version
+- Configuration distribution performance
+- Proxy connectivity status
+- Configuration validation and errors
+
+**Note**: Ambient mode specific - sidecar injection metrics are excluded as they are not applicable.
+
+#### Cost Optimization
+
+The minimal ingestion profiles exclude:
+
+- **Resource metrics**: CPU, memory usage, goroutines, heap allocations of control and data plane components
+- **Detailed event metrics**: Kubernetes registry events, config events, push triggers
+- **Push size histograms**: Detailed size distributions
+- **Debug counters**: Internal implementation details
+- **Client-reported metrics**: Redundant metrics available from server-side perspective
+- **Sidecar injection metrics**: Not applicable in ambient mode
+
+Customers requiring additional metrics can add them to `default-metrics-keep-list` or set `minimal-ingestion-profile = false`.
+
+#### Cardinality Considerations
+
+The minimal ingestion profile is designed to keep cardinality manageable:
+- An ambient mesh cluster typically emits ~8-12k time series with minimal profile enabled
+- Well below the 1 million time series limit for Azure Monitor Managed Prometheus
+- Cardinality scales with number of ztunnel replicas and custom resource definitions, not with pod count
+- Customers with high CRD counts should monitor their ingestion costs
+
+### Applying Configuration Changes
+
+1. Edit the **ama-metrics-settings-configmap** in the `kube-system` namespace
+2. Apply the changes: `kubectl apply -f ama-metrics-settings-configmap.yaml`
+3. Configuration updates are detected automatically within 2-3 minutes
+4. No pod restarts required
+
 ### Customer Benefits
+
 - **Familiar workflow**: Same configuration experience as AKS cluster monitoring.
 - **Unified workspace**: All mesh metrics (control plane + data plane) in one queryable location.
 - **Standard tools**: Use Grafana dashboards, PromQL queries, and Azure Monitor features.
-
-Operations note (non-goal for customers, for SREs only): minimum health signals include auth success/fail rates, rate-limit violations, scrape/write latencies, and storage saturation.
 
 ## Definition of Success
 
@@ -168,7 +378,7 @@ Operations note (non-goal for customers, for SREs only): minimum health signals 
 | 2 | AKS-aligned experience | Customers report setup similar to AKS Managed Prometheus | ≥90% satisfaction | High |
 | 3 | Managed Prometheus integration | Both metric types visible in Azure Monitor Managed Prometheus workspace | 100% | High |
 | 4 | BYO compatibility | BYO Prometheus collectors authenticate and scrape successfully | 100% | Medium |
-| 5 | Security | Authentication success rate, rate limiting enforced | ≥99% | High |
+| 5 | Security and Reliability | Secure access maintained, system stability preserved | ≥99% uptime | High |
 
 ## Requirements
 
@@ -176,10 +386,10 @@ Operations note (non-goal for customers, for SREs only): minimum health signals 
 
 | No. | Requirement | Priority |
 |-----|-------------|----------|
-| 1 | Expose Istio control plane (Istiod) metrics from MCP via Prometheus format | High |
+| 1 | Expose Applink control plane (Istiod) metrics from MCP in Prometheus format | High |
 | 2 | Enable data plane metrics collection (ztunnel, CNI) via Kubernetes service discovery | High |
-| 3 | Provide OIDC-based JWT authentication for control plane endpoint | High |
-| 4 | Enforce per-client rate limiting | High |
+| 3 | Provide secure authenticated access to control plane metrics | High |
+| 4 | Ensure system stability and prevent abuse | High |
 | 5 | Support Azure Monitor Managed Prometheus workspace integration (primary path) | High |
 | 6 | Support BYO Prometheus collectors | Medium |
 | 7 | Align configuration experience with AKS Managed Prometheus patterns | High |
@@ -191,23 +401,24 @@ Operations note (non-goal for customers, for SREs only): minimum health signals 
 | 1 | Verify Azure Monitor Managed Prometheus ingestion of control plane metrics | High |
 | 2 | Verify Azure Monitor Managed Prometheus ingestion of data plane metrics | High |
 | 3 | Validate correlation queries across control plane and data plane metrics | High |
-| 4 | Validate BYO Prometheus scraping via OIDC | High |
-| 5 | Confirm rate limiting behavior | Medium |
-| 6 | Negative tests: invalid token, expired token → 401 | Medium |
-| 7 | Validate configuration matches AKS Managed Prometheus patterns | High |
+| 4 | Validate BYO Prometheus scraping with authentication | Medium |
+| 5 | Verify minimal ingestion profile collects only specified metrics | High |
+| 6 | Validate configuration changes via configmap are applied correctly | High |
 
 ## Dependencies and Risks
 
-| No. | Requirement or Deliverable | Giver Team / Contact |
-|-----|----------------------------|-----------------------|
-| 1 | MCP namespace deployments (Istiod) | Managed Mesh Platform |
-| 2 | VMAgent/VMSingle deployment artifacts | Observability Platform |
-| 3 | OIDC-enabled AppLink member clusters | AppLink RP |
+### Dependencies
 
-**Risks**:  
-- Performance of VMSingle under high load.  
-- Authentication drift if member cluster OIDC misconfigured.  
-- Latency introduced by federation path.  
+| No. | Requirement or Deliverable | Giver Team / Contact |
+|-----|----------------------------|----------------------|
+| 1 | MCP namespace deployments (Istiod) | Managed Mesh Platform |
+| 2 | OIDC-enabled Applink member clusters | Applink RP |
+
+### Risks
+
+- **Control plane metrics collection performance**: Mitigation through capacity planning and monitoring
+- **Authentication configuration issues**: Mitigation through validation checks and clear documentation  
+- **Metrics availability latency**: Mitigation through optimization and monitoring of collection pipeline
 
 ## Compete
 
@@ -220,7 +431,7 @@ Operations note (non-goal for customers, for SREs only): minimum health signals 
 - No explicit control plane metrics endpoint with customer authentication.  
 
 ### Differentiation (Public Preview)
-- **AKS-aligned experience**: Unified control plane + data plane observability using the familiar Managed Prometheus pattern.  
-- **Comprehensive mesh visibility**: Single workspace for all Istio metrics, enabling full-stack correlation.  
-- **Secure, standards-based**: OIDC-authenticated endpoints with standard Prometheus format.  
-- **Simplified onboarding**: Configuration mirrors AKS setup, reducing learning curve for existing Azure customers.
+- **AKS-aligned experience**: Customers use the same configmap pattern for mesh metrics as they do for AKS control plane metrics—no new tools or workflows to learn
+- **True unified workspace**: Unlike competitors, both control plane and data plane metrics queryable in a single Prometheus workspace with correlated labels
+- **Cost-optimized minimal profiles**: Pre-configured essential metric sets aligned with official Istio dashboards reduce ingestion costs by 60-80% versus full metric collection
+- **Standard Prometheus compatibility**: No vendor lock-in—works with Azure Monitor Managed Prometheus or any BYO Prometheus collector
