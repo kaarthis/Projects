@@ -18,7 +18,7 @@ This PRD defines the public preview for Applink observability covering both cont
 
 - **Unified metrics collection**: Both Mesh control plane (MCP) and data plane (ztunnel, CNI) metrics collected and available in the same Azure Monitor workspace via Managed Prometheus
 - **AKS-aligned experience**: Customers configure observability using the same Azure Monitor Managed Prometheus integration pattern familiar to AKS users via configmaps
-- **Standard Prometheus format**: All metrics exposed in standard Prometheus format, compatible with Azure Monitor and BYO Prometheus collectors
+- **Standard Prometheus format**: All metrics exposed in standard Prometheus format, compatible with Azure Monitor and BYO Prometheus collectors. (BYO Prometheus collectors are out of scope for this PRD and will be addressed in a separate workstream)
 
 **Out of scope for public preview**: 
 - Portal UI for control plane-specific metrics
@@ -63,7 +63,7 @@ This public preview delivers comprehensive mesh observability through Azure Moni
 - Provide visibility into both control plane and data plane mesh health within the same workspace customers use for cluster operations
 - Align the customer configuration experience with AKS Managed Prometheus patterns
 - Enable customers to scrape both Istio control plane and data plane metrics through authenticated endpoints
-- Expose all mesh metrics in standard Prometheus format consumable by Azure Monitor Managed Prometheus or BYO Prometheus collectors
+- Expose all mesh metrics in standard Prometheus format consumable by Azure Monitor Managed Prometheus.
 
 ### Non-Functional Goals
 
@@ -141,8 +141,10 @@ Integrate AppLink mesh telemetry into the existing AKS cluster monitoring experi
 
 - **Unified workspace integration:** Both control plane (Istiod) and data plane (ztunnel, CNI) metrics land in the same Azure Monitor workspace customers already use for cluster operations
 - **AKS-aligned configuration:** Customers configure mesh metrics using the same pattern they use for AKS cluster monitoring, preserving operational simplicity
-- **Standard Prometheus format:** All metrics exposed in standard Prometheus format, compatible with Azure Monitor Managed Prometheus and BYO Prometheus collectors
+- **Standard Prometheus format:** All metrics exposed in standard Prometheus format, compatible with Azure Monitor Managed Prometheus.
 - **Public Preview Scope:** Focus on Azure Monitor Managed Prometheus integration; no custom portal UI or alerting 
+
+For in-depth technical details, please refer to the [design document](https://msazure.visualstudio.com/CloudNativeCompute/_wiki/wikis/personalplayground/871992/-Design-Applink-Observability-Data-Plane-and-Control-Plane-Metrics).
 
 ## User Experience
 
@@ -377,8 +379,7 @@ The minimal ingestion profile is designed to keep cardinality manageable:
 | 1 | Unified observability | Control plane + data plane metrics visible in Azure Monitor workspace | 100% | High |
 | 2 | AKS-aligned experience | Customers report setup similar to AKS Managed Prometheus | ≥90% satisfaction | High |
 | 3 | Managed Prometheus integration | Both metric types visible in Azure Monitor Managed Prometheus workspace | 100% | High |
-| 4 | BYO compatibility | BYO Prometheus collectors authenticate and scrape successfully | 100% | Medium |
-| 5 | Security and Reliability | Secure access maintained, system stability preserved | ≥99% uptime | High |
+| 4 | Security and Reliability | Secure access maintained, system stability preserved | ≥99% uptime | High |
 
 ## Requirements
 
