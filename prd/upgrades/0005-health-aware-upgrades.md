@@ -1,5 +1,5 @@
 ---
-title: AKS Upgrade Guardrails: SLO‑Gated, Metric‑Aware Upgrades
+title: Health aware upgrades
 wiki: ""
 pm-owners: [kaarthis, Shashank]
 feature-leads: []
@@ -12,27 +12,13 @@ last-updated: 2025-08-13
 
 # Overview
 
-Before this feature, AKS customers hand‑crafted blue/green or rolling flows and manually watched dashboards/alerts to decide whether to continue or stop an upgrade. Now, customers declare application and platform SLO guardrails through Kubernetes‑native Custom Resources that capture health assessments. The system supports:
-- Managed Azure Monitor metrics/alerts (first‑class managed option, including Node Problem Detector and Managed Prometheus)
-- Bring‑your‑own (BYO) endpoints: self‑hosted Prometheus, OpenTelemetry collectors, webhooks, or CRD‑aggregated health inside the cluster
-
-Any monitoring system or operator can write source‑agnostic `ClusterHealth` CRs that contain only the health verdict (healthy/degraded/unhealthy) without any reference to the monitoring source. The upgrade engine discovers and evaluates these health CRs during preflight, canary, and post‑upgrade windows and will automatically abort—or roll back agent pools—on sustained anomalies. Health assessment lifecycle (configure sources via `ClusterHealthSource`, evaluate health, record verdicts in `ClusterHealth`) is cleanly separated from signal providers, so adding or swapping a monitoring backend does not require reauthoring health criteria.
-
 ## Problem Statement / Motivation
 
-Built‑in AKS readiness checks (API, scheduling, quota, PDB) miss nuanced or delayed degradations (latency creep, error spikes, memory leaks) that emerge minutes or hours after node replacement or control plane changes. Operators today must babysit metrics and manually time an abort, increasing toil and risk. Blue/Green mechanics (drain batches, soak, cutover) improve safety but still lack integrated, metrics‑based intervention.
+Historically, once an AKS upgrade was kicked off, the platform executed a predetermined sequence (cordon/drain, node replace, control plane/image transitions) with zero awareness of live workload SLOs (latency, error rate, saturation, crash loops). The process advanced even if applications silently degraded minutes after a batch, making upgrades effectively unaware of any notion of infra/application health and forcing operators to rely on timing guesses rather than verified service state.
 
-We need comprehensive, SLO‑aware health monitoring capabilities:
-- Preflight: prevent upgrade initiation when baseline health is already compromised
-- Canary / per‑batch: identify early regressions before widespread impact
-- Post‑upgrade: detect delayed degradations (e.g., memory leaks, performance deterioration)
-- Control plane: pre and post health assessments with abort capability to prevent risky control plane operations when SLOs are violated
+In practice, customers mitigate this by manually spot‑checking dashboards and alert streams (Prometheus, Azure Monitor, Datadog, etc.) before starting, continuously during canary or batch rollouts, and again after completion—hoping to catch regressions early enough to intervene.
 
-Example upgrade pain points:
-- Latency regressions after partial rollout
-- Error‑rate spikes tied to version/image change
-- OOM / crashloop patterns appearing after canary window
-- Cascading dependency failures unfolding over time
+This PRD proposes a Kubernetes‑native mechanism for customers to plug into a new cluster health contract which is evaluated by AKS platform as part of the upgrade process.
 
 ## Goals / Non-Goals
 
@@ -47,13 +33,8 @@ Example upgrade pain points:
 - Document the ClusterHealth CR schema to enable any system (controllers, operators, external tools) to write health assessments
 
 ### Non-Goals
-- No fleet-level multi-cluster orchestration or sequencing logic
-- No automated traffic shifting or full blue/green traffic management (health monitoring only, not traffic control)
 - No application auto-remediation (system only pauses or rolls back upgrades)
-- No automated health criteria generation (users define their own SLOs and thresholds)
 - No guarantee of rollback for control plane upgrades (abort-only by design)
-- No custom business workflow engine (decisions limited to proceed/hold/abort/rollback based on health status)
-
 
 ## Customers and Business Impact
 
@@ -67,59 +48,44 @@ Current Customer Impact (baseline):Mar - July 2025
 | Delayed memory spikes         | 12              |
 
 In the last 4 months (March–July), there were 1,050 upgrade-related support cases. Of these, a significant portion were tied to workload breakage or post-upgrade latency/performance regressions, with issues often surfacing after upgrade completion rather than during the process.
-- Heavy operator burden maintaining bespoke blue/green flows and manual canary monitoring; inconsistent coverage across teams.
-
-Managed Prometheus Adoption (Feb 16–Aug 13, 2025)
-- Internal clusters:
-  - Start: 12,695
-  - End: 16,797
-  - Growth: +4,102
-- External clusters:
-  - Start: 23,858
-  - End: 31,536
-  - Growth: +7,678
-
-This strong and consistent growth across internal and external environments underscores increasing reliance on Managed Prometheus for observability at scale—making a compelling case for continued investment atleast for the managed solution to leverage Managed prometheus.
 
 Business Impact / OKR Alignment:
-- Direct contribution to the internal “Workload SLO” OKR by preventing upgrade‑induced SLO breaches via automated gating.
-- Upgrade CSAT baseline ≈ 160; targeted uplift through safer‑by‑default upgrades and fewer incidents.
-- Expected outcomes: lower Sev2+ post‑upgrade volume, higher safe upgrade completion rate, reduced no‑fly time—tracked in Definition of Success.
+- Direct contribution to the internal “Workload SLO” OKR by making upgrades more reliable.
+- Expected outcomes: lower Sev2+ post‑upgrade volume, higher safe upgrade completion rate.
 
 ## Existing Solutions or Expectations
 
-- Customer‑built blue/green, manual canaries, ad‑hoc alert checks
-- AKS Blue/Green Nodepool Upgrade (rolling out): there is no app health checks possible natively in blue green today.
-- 3P CD systems with health monitoring (not integrated into AKS upgrade engine)
-
+- Instead of using AKS provided 'upgrade' experience, customers today can achieve health aware upgrades via manual blue-green orchestration + observability checks (manually or customer can define their own custom logic to check their observability tooling).
 
 ## Narrative/Personas
 
 | Persona | Required permissions | User Journey and Success Criteria |
 |---------|----------------------|-----------------------------------|
 | Developer / Cluster Owner | Microsoft.ContainerService/managedClusters/write; Microsoft.AlertsManagement/prometheusRuleGroups/read | Reference existing Managed Prometheus alert rules; upgrade aborts or rolls back (agent pools) on breach. Success: No SLO breach escapes an upgrade. |
-| Platform Operator | Microsoft.ContainerService/managedClusters/*; Microsoft.AlertsManagement/prometheusRuleGroups/* | Define org defaults; enforce via policy; monitor compliance. Success: Safe upgrades at scale without bespoke pipelines. |
 
 ## User Stories
 
 The user stories below are implementation‑agnostic and ensure support pre/during/post health monitoring, prefer an extensible signal model (Prometheus first, CRD/webhook extensibility later), and cover key personas (cluster operator, app developer).
-| Persona | Story ID | User Story | Acceptance Criteria |
-|---------|---------:|-----------|---------------------|
-| Cluster Operator | CO-1 | As a Cluster Operator, I want to define and reuse health monitoring configurations across multiple clusters so upgrades are consistently protected by organization-wide SLO policies. | Health monitoring configurations can be applied to clusters and upgrades; health evaluations occur before, during, and after upgrades; health monitoring definitions are reusable across clusters; organizational policies can enforce required health criteria; evaluation history is auditable and queryable. |
-| Cluster Operator | CO-2 | As a Cluster Operator, I want automated recovery and comprehensive diagnostics when an upgrade degrades cluster health so I can restore service quickly and understand what went wrong. | Upgrades automatically abort or roll back when health deteriorates; all decisions include timestamps and correlation IDs; health evaluation snapshots are retained for analysis; root cause investigation data is readily accessible. |
-| Basic Observability User | BU-1 | As a Basic Observability User, I want to enable health-aware upgrades with a single toggle and rely on sensible defaults so my clusters are protected without any monitoring expertise. | User enables health monitoring with one setting; default health checks automatically activate (node health, workload readiness, API health, resource pressure); health assessments run continuously; upgrades pause or abort automatically when health degrades; no manual configuration required. |
-| AMP Power User | PU-1 | As a Managed Prometheus Power User, I want my existing alert rules and metrics to automatically protect upgrades so my monitoring investment directly improves upgrade safety. | User's existing Prometheus rules integrate with health monitoring; custom alerts and thresholds are honored during upgrades; health decisions show which metrics triggered actions; monitoring dashboards display upgrade-related health events; evaluation history includes metric values and threshold breaches. |
-| Application Developer | AD-1 | As an App Developer, I want to define meaningful SLOs for my services that prevent upgrades only when real degradation occurs, avoiding false positives. | Health monitoring supports application-specific SLOs (latency, error rate, availability); evaluation windows and aggregation methods reduce noise; breach events clearly show which SLOs failed and by how much; sensible defaults minimize false positives. |
+
+| Persona | User Story | Acceptance Criteria |
+|---------|------------|---------------------|
+| Cluster Operator A (Basic operator who hasn't established application monitoring) | As a Cluster Operator, I  want to enable health-aware upgrades with a single toggle and rely on sensible defaults so my clusters are protected without any monitoring expertise. | User enables health monitoring based upgrades with one setting resulting in default health checks (node health, workload readiness, API health, resource pressure).|
+| Cluster Operator B (Advanced operator who has already set up monitoring and alerts for their cluster infrastructure and workloads) | As a Cluster Operator, I want my existing alert rules and metrics to automatically protect upgrades so my monitoring investment directly improves upgrade safety. | User's existing Prometheus rules integrate with health monitoring; custom alerts and thresholds are honored during upgrades. |
 
 Acceptance criteria common to all stories:
 - Health evaluations produce durable, queryable ClusterHealth CRs with timestamps, correlation IDs, and diagnostic context stored as Kubernetes resources.
 - Operation decisions (proceed/abort/hold/rollback) based on ClusterHealth status are exposed to CLI/Portal/API and are auditable in activity logs.
 - Health monitoring modes: either Fully Managed (Managed Prometheus / Azure Monitor with pre-configured ClusterHealthSource CRs) or Bring‑Your‑Own (self‑hosted Prometheus, OpenTelemetry, webhooks, in‑cluster CRDs). Any system can write ClusterHealth CRs following the source-agnostic schema, ensuring durable, auditable health assessments and identical upgrade decision semantics regardless of monitoring provider. Users select managed or BYO via ClusterHealthSource CRs without changing upgrade behavior.
-- Security model and RBAC principals for ClusterHealthSource management and ClusterHealth CR writing are defined at a high level using standard Kubernetes RBAC (detailed RBAC design is a follow-up task).
 
+## Proposal
 
-## **Proposals
+The proposed experience will cater to 3 kinds of customers - 
 
+| Customer Type | What experience will be provide |
+|---------------|-------------|
+| Customers who don't have their own definition of application health/alerts | AKS provides an opt-in managed health check experience evaluated on AKS defined standard cluster health definition |
+| Customers who have their own definition of application health/alerts and are using Azure Managed Prometheus | AKS provides an opt-in managed health check experience evaluated on AKS defined standard cluster health definition + customers can additionally point to their BYO alert rules in Azure Managed Prometheus |
+| Customers who have their own definition of application health/alerts and are NOT using Azure Managed Prometheus | AKS provides an opt-in managed health check experience evaluated on AKS defined standard cluster health definition + customer is able to write to the cluster health object monitored by AKS (via either their own custom operators or observability partner supplied operators) |
 
 ### Option A: Custom Resource (CR) Model - Native Kubernetes Health Monitoring
 
@@ -131,20 +97,17 @@ This approach uses standard Kubernetes patterns (Custom Resources) to monitor cl
 Defines how health data is collected from various monitoring sources.
 
 **Supported Source Types:**
-- Managed Prometheus
-- Azure Monitor  
-- Webhook endpoints
-- CRD Aggregator
-- External Adapters (Datadog, OpenTelemetry, etc.)
+- Azure Managed Prometheus
+- External sources (Datadog, OpenTelemetry, etc.)
+- Webhook (Generic fallback)
+
+Note: Only Azure Managed Prometheus is in scope of this PRD. External sources and webhook are future possibilities, but are out of scope of this PRD.
 
 **Configuration Capabilities:**
 - **Endpoint Configuration**: Prometheus URLs, webhook endpoints, external adapters
-- **Alert Rules**: Specify which alert rule IDs to monitor
-- **Authentication**: Support for managed identity, token, or certificate-based auth
-- **Evaluation Settings**: 
+- **Alert Rules**: Applicable in the case of Azure Managed Prometheus. Specify which alert rule IDs to monitor
+- **Authentication**: Support for managed identity for Azure Managed Prometheus. Authentication options for non-Azure Managed Prometheus are out of scope of this PRD and will be covered in future.
   - Configurable evaluation windows (default: 5 minutes)
-  - Aggregation methods (average, max, min, percentile)
-- **Status Reporting**: Active/Inactive/Error states with last evaluation timestamp
 
 ##### 2. **ClusterHealth Resource**  
 A source-agnostic resource that captures the evaluated health verdict of the cluster, regardless of which monitoring system or operator produced it.
@@ -180,7 +143,7 @@ ARM provides lightweight enablement and read-only health reporting.
 1. **Setup**: Administrator enables health monitoring via ARM API
 2. **Configuration**: Deploy ClusterHealthSource CRs to define monitoring sources (optional - systems can write ClusterHealth directly)
 3. **Evaluation**: Controllers, operators, or external systems evaluate health from their respective sources
-4. **Reporting**: ClusterHealth CRs capture the health verdict, agnostic to the evaluation source
+4. **Reporting**: ClusterHealth CRs capture the health status, agnostic to the evaluation source
 5. **Decision**: Upgrade engine consumes ClusterHealth CRs to make abort/rollback decisions based solely on health status
 6. **Audit**: All health assessments and decisions are stored as CRs for post-mortem analysis
 
@@ -188,7 +151,6 @@ ARM provides lightweight enablement and read-only health reporting.
 
 - **Kubernetes-Native**: Leverages standard CRD patterns familiar to operators
 - **Source-Agnostic Design**: ClusterHealth CRs contain only health verdicts, not source details
-- **GitOps-Friendly**: Declarative YAML definitions manageable through standard workflows  
 - **Vendor-Agnostic**: Works consistently across AKS and non-AKS clusters
 - **Extensible**: Any system can write ClusterHealth CRs following the schema
 - **Minimal ARM Dependency**: Reduces coupling with Azure-specific constructs
@@ -201,7 +163,6 @@ ARM provides lightweight enablement and read-only health reporting.
 - Enables multi-cloud and hybrid scenarios
 - Preserves cluster autonomy and portability
 - Simplifies third-party integrations through source-agnostic health model
-- Aligns with GitOps and Infrastructure-as-Code practices
 
 #### Cons
 - Less centralized governance compared to ARM resources
@@ -353,7 +314,7 @@ The feature is available in public preview for all AKS clusters running Kubernet
 The UX  uses Kubernetes Custom Resources to define health criteria and capture evaluation results. This CR-first approach ensures cluster-native operation while maintaining compatibility with both AKS and non-AKS environments.
 
 ##### Core Custom Resource Definitions
-
+Structure
 ```yaml
 # ClusterHealthSource CRD - Configures health data providers for the cluster
 apiVersion: apiextensions.k8s.io/v1
@@ -379,7 +340,7 @@ spec:
                 description: "Name of the health source provider"
               sourceType:
                 type: string
-                enum: ["ManagedPrometheus", "AzureMonitor", "Webhook", "CRDAggregator", "ExternalAdapter"]
+                enum: ["AzureManagedPrometheus", "Webhook"]
                 description: "Type of health monitoring source"
               sourceConfig:
                 type: object
@@ -401,10 +362,7 @@ spec:
                     properties:
                       type:
                         type: string
-                        enum: ["managedIdentity", "token", "certificate"]
-                      secretRef:
-                        type: string
-                        description: "Reference to auth secret"
+                        enum: ["managedIdentity"]
                   evaluationWindow:
                     type: string
                     default: "5m"
@@ -425,72 +383,72 @@ spec:
               message:
                 type: string
                 ---
-                # ClusterHealth CRD - Stores cluster health status
-                apiVersion: apiextensions.k8s.io/v1
-                kind: CustomResourceDefinition
-                metadata:
-                  name: clusterhealth.health.aks.io
-                spec:
-                  group: health.aks.io
-                  versions:
-                  - name: v1
-                    served: true
-                    storage: true
-                    schema:
-                      openAPIV3Schema:
-                        type: object
-                        properties:
-                          spec:
-                            type: object
-                            properties:
-                              timestamp:
-                                type: string
-                                format: date-time
-                                description: "Time when this health assessment was performed"
-                          status:
-                            type: object
-                            required: ["overallStatus"]
-                            properties:
-                              overallStatus:
-                                type: string
-                                enum: ["Unknown", "Healthy", "Degraded", "Unhealthy"]
-                                description: "Overall cluster health status"
-                              conditions:
-                                type: array
-                                description: "List of health conditions contributing to overall status"
-                                items:
-                                  type: object
-                                  required: ["type", "status"]
-                                  properties:
-                                    type:
-                                      type: string
-                                      description: "Type of health condition (e.g., NodeHealth, WorkloadHealth, NetworkHealth)"
-                                    status:
-                                      type: string
-                                      enum: ["True", "False", "Unknown"]
-                                    severity:
-                                      type: string
-                                      enum: ["info", "warning", "critical"]
-                                    reason:
-                                      type: string
-                                      description: "Brief reason for the condition"
-                                    message:
-                                      type: string
-                                      description: "Detailed message about the condition"
-                                    lastTransitionTime:
-                                      type: string
-                                      format: date-time
-                              summary:
-                                type: object
-                                description: "Optional summary statistics (writer-defined)"
-                                additionalProperties:
-                                  type: string
-                              lastUpdated:
-                                type: string
-                                format: date-time
-                              correlationId:
-                                type: string
-                                description: "Optional correlation ID for tracking related events"
+# ClusterHealth CRD - Stores cluster health status
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterhealth.health.aks.io
+spec:
+  group: health.aks.io
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+                description: "Time when this health assessment was performed"
+          status:
+            type: object
+            required: ["overallStatus"]
+            properties:
+              overallStatus:
+                type: string
+                enum: ["Unknown", "Healthy", "Degraded", "Unhealthy"]
+                description: "Overall cluster health status"
+              conditions:
+                type: array
+                description: "List of health conditions contributing to overall status"
+                items:
+                  type: object
+                  required: ["type", "status"]
+                  properties:
+                    type:
+                      type: string
+                      description: "Type of health condition (e.g., NodeHealth, WorkloadHealth, NetworkHealth)"
+                    status:
+                      type: string
+                      enum: ["True", "False", "Unknown"]
+                    severity:
+                      type: string
+                      enum: ["info", "warning", "critical"]
+                    reason:
+                      type: string
+                      description: "Brief reason for the condition"
+                    message:
+                      type: string
+                      description: "Detailed message about the condition"
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+              summary:
+                type: object
+                description: "Optional summary statistics (writer-defined)"
+                additionalProperties:
+                  type: string
+              lastUpdated:
+                type: string
+                format: date-time
+              correlationId:
+                type: string
+                description: "Optional correlation ID for tracking related events"
 
                 ---
 # Example ClusterHealthSource
