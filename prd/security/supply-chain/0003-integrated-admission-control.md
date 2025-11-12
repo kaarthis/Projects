@@ -120,12 +120,3 @@ Customers face significant operational overhead and security risk managing fragm
 
 **Key Challenge**: Today's solutions are fragmented—vulnerability scanning (MDC), signature verification (Image Integrity), and policy enforcement (Azure Policy/Gatekeeper) operate independently with no unified orchestration or tamper-proof enforcement mechanism.
 
-**Competitive Landscape:**
-
-- **AWS EKS**: EKS Pod Identity Webhook + integration with AWS Signer, ECR scanning, and partner solutions through AWS Marketplace
-- **GKE**: Binary Authorization (built-in signing verification), GKE Policy Controller (managed OPA), Container Analysis API integration
-- **Customer Expectations**: 
-  - **Managed Service**: Customers expect AKS to manage the admission control infrastructure (no manual deployments)
-  - **Tamper-Proof**: Control plane enforcement that cluster admins cannot bypass
-  - **Ecosystem Compatibility**: Work with existing tools (ACR, Defender, third-party vendors)
-  - **Zero-Trust Architecture**: Deny-by-default with explicit allow policies
