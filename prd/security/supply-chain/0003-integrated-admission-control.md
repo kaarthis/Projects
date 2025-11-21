@@ -1,10 +1,10 @@
 ---
 title: Integrated Admission Control for AKS Supply Chain Security
 wiki: ""
-pm-owners: []
+pm-owners: [kaarthis, shashank]
 feature-leads: []
-authors: []
-stakeholders: []
+authors: [kaarthis]
+stakeholders: [Toddy, Yi, Maya, Weinong]
 approved-by: [] 
 ---
 
@@ -44,20 +44,25 @@ Admission control will validate various attestation types attached to container 
 
 ### Functional Goals
 
-1. **Azure Portal as Primary Experience**: Position **Azure Portal's Kubernetes Hub** as the central, recommended interface for configuring and managing admission control, with unified visibility across all first-party security integrations (ACR, Defender, Image Integrity)
-2. **API Support for Automation**: Provide AKS API support for customers who require Infrastructure-as-Code and automation workflows (ARM templates, Bicep, Terraform)
-3. **First-Party Microsoft Service Integration**: 
+1. **Portal-First with API-Flexible Architecture**: 
+   - **Primary Experience**: Azure Portal's Kubernetes Hub is the central, recommended interface for configuring and managing admission control with unified visibility across all first-party security integrations (ACR, Defender, Image Integrity)
+   - **API for Automation**: AKS API support for Infrastructure-as-Code and automation workflows (ARM templates, Bicep, Terraform) for customers requiring declarative infrastructure
+   - **Centralized Visibility**: Real-time admission control status, policy compliance dashboards, and decision audit logs across all clusters in Kubernetes Hub
+
+2. **First-Party Microsoft Service Integration**: 
    - **Azure Container Registry (ACR)**: Deep integration with ACR artifact signing ([Notary Project](https://github.com/notaryproject) signatures using Notation tooling) and Image Integrity for signature verification
    - **Microsoft Defender for Containers (MDC)**: Integrate vulnerability scanning results and security configuration assessments for admission gating
    - **Azure Policy**: Enable organization-wide governance through built-in policy definitions
+
 3. **Comprehensive Security Validation**: 
-   - Image signature verification and attestation validation
+   - Image signature verification and attestation validation (Notary, SLSA, in-toto)
    - Vulnerability scanning gates (block images with critical/high CVEs)
-   - Security misconfiguration detection (CIS Kubernetes Benchmark violations, pod security standards)
+   - Security misconfiguration detection (CIS Kubernetes Benchmark violations, Pod Security Standards)
    - Security best practices enforcement (privilege escalation, host namespace access, etc.)
+
 4. **Tamper-Proof Architecture**: Ensure admission control configuration and enforcement cannot be bypassed or modified except through the AKS control plane API
-5. **Kubernetes Hub Integration**: Centralized visibility and management through Azure Portal's Kubernetes Hub, showing admission control status, policy compliance, and decision audit logs across all clusters
-6. **Extensible API Design**: API architecture deliberately designed to accommodate future third-party scanner and certification provider integrations (out of scope for initial release)
+
+5. **Extensible API Design**: API architecture deliberately designed to accommodate future third-party scanner and certification provider integrations (out of scope for initial release)
 
 ### Non-Functional Goals
 
@@ -79,80 +84,52 @@ Admission control will validate various attestation types attached to container 
 
 ### Non-Goals
 
-1. **Third-Party Security Tool Integration**: Initial release will not include integrations with third-party scanners (Aqua, Prisma Cloud, Twistlock), certification providers, or policy engines (OPA/Gatekeeper, Kyverno). The API will be designed to support these integrations in future releases.
-2. **Exception/Exemption Workflow**: Automated workflows for requesting and approving exceptions to vulnerability gates or security configuration policies are out of scope. Customers requiring exemptions must use alternative mechanisms (e.g., image allow-lists at the namespace level).
-3. **Runtime Security**: This feature focuses on admission-time controls; runtime detection, response, and behavioral analysis remain in Microsoft Defender for Containers.
-4. **Custom Admission Logic/Policy Engine**: Customers requiring fully custom admission logic beyond the provided first-party integrations should use Azure Policy guest configuration or wait for future third-party integrations.
-5. **Image Scanning Service**: AKS will not provide its own vulnerability scanner; integration with Microsoft Defender for Containers scanning is in scope.
-6. **Certificate and Key Management**: While the feature integrates with signing solutions, certificate lifecycle management (issuance, rotation, revocation) remains the responsibility of Azure Key Vault, Azure Trusted Signing, or customer PKI.
-7. **Multi-Cluster Policy Distribution (Initial ReleaLese)**: Fleet-wide policy management via Azure Policy will be addressed in a future iteration; initial release focuses on per-cluster configuration via Portal and API.
-8. **SBOM Generation**: Generation of Software Bill of Materials is out of scope; validation of existing SBOM attestations is in scope.
+1. **Third-Party Integrations** (v1): Integrations with third-party scanners (Aqua, Prisma, Twistlock), policy engines (OPA, Kyverno), or certification providers are future roadmap items; API designed for extensibility.
+2. **Exception Workflows**: Automated approval workflows for policy exemptions are out of scope; customers manage exceptions via allow-lists and namespace-level configuration.
+3. **Custom Admission Logic**: Fully custom policies beyond provided first-party rules require Azure Policy guest configuration or future third-party integrations.
+4. **Infrastructure Responsibilities**: Certificate lifecycle (issuance, rotation, revocation), image scanning service (uses MDC), and SBOM generation are out of scope.
+5. **Runtime Security**: Runtime threat detection and behavioral analysis remain in Microsoft Defender for Containers; this feature controls admission only.
 
 ## Narrative/Personas
 
 | Persona | Required permissions | User Journey and Success Criteria |
 |---------|----------------------|-----------------------------------|
-| Security Architect | Microsoft.ContainerService/managedClusters/read<br>Microsoft.ContainerService/managedClusters/write<br>Microsoft.Authorization/policyDefinitions/read<br>Microsoft.Authorization/policyAssignments/write | As a security architect, I want to design and enforce organization-wide supply chain security policies across all AKS clusters **using Azure Portal's Kubernetes Hub**. I should be able to define signing requirements, vulnerability thresholds, and compliance gates through a visual interface, and receive compliance dashboards showing policy adherence across my fleet. Success: 100% of production clusters enforce signing requirements, vulnerability gates, and compliance policies with zero bypass incidents—all visible from a single Portal view. |
-| Cluster Operator | Microsoft.ContainerService/managedClusters/read<br>Microsoft.ContainerService/managedClusters/write<br>Microsoft.ContainerService/managedClusters/admissionControl/write<br>Microsoft.ContainerService/admissionControl/read | As a cluster operator, I want to enable and configure admission control for my AKS cluster **through the Azure Portal** without deploying any in-cluster resources manually or writing YAML. I should navigate to my cluster in the Portal, enable admission control in the Security blade, select my ACR registries for signature verification and MDC for vulnerability scanning, all through dropdown menus and toggles. Success: Admission control fully configured in under 10 minutes using only the Portal; no CLI or kubectl required. |
-| Application Developer | Microsoft.ContainerService/managedClusters/read<br>Microsoft.ContainerService/managedClusters/listClusterUserCredentials/action | As a developer, I want clear, actionable feedback when my container images are rejected by admission policies. When deployment fails, I should see admission decision details **in the Portal's activity log and Kubernetes Hub** with specific errors indicating whether the issue is missing signatures, failing vulnerability scans, or policy violations, with links to remediation documentation. Success: 90% of admission failures resolved without contacting support by using Portal diagnostics. |
-| Compliance Officer | Microsoft.Authorization/policyDefinitions/read<br>Microsoft.Authorization/policyAssignments/read<br>Microsoft.Security/assessments/read | As a compliance officer, I want to demonstrate that all production AKS clusters enforce supply chain security policies consistent with our security framework (SLSA L3, NIST 800-190). **Using Azure Portal's Kubernetes Hub**, I should access pre-built compliance dashboards showing admission control coverage, policy compliance trends, and audit logs for all admission decisions. Success: Generate compliance reports for auditors in under 15 minutes entirely from the Portal. |
+| Security Architect | Microsoft.ContainerService/managedClusters/read/write<br>Microsoft.Authorization/policyDefinitions/read/write | Design organization-wide supply chain policies in **Azure Portal's Kubernetes Hub**. Select signing requirements, vulnerability thresholds, and compliance gates via visual interface; apply across fleet via Azure Policy. **Success**: 100% production clusters with enforced policies, zero bypass incidents, compliance dashboards visible in Portal. |
+| Cluster Operator | Microsoft.ContainerService/managedClusters/read/write<br>Microsoft.ContainerService/admissionControl/read/write | Enable and configure admission control via **Azure Portal** (no YAML/kubectl). Select ACR registries for signature verification and MDC for vulnerability scanning through dropdowns. **Success**: Full configuration <10 minutes; enforcement active and tamper-proof. |
+| Application Developer | Microsoft.ContainerService/managedClusters/read<br>Microsoft.ContainerService/listClusterUserCredentials/action | Receive clear admission failure feedback with specific errors in **Portal's activity log**. View missing signatures, CVE details, or policy violations with remediation links. **Success**: Resolve 90% of rejections without support. |
+| Compliance Officer | Microsoft.Authorization/policyDefinitions/read<br>Microsoft.Security/assessments/read | Access pre-built compliance dashboards in **Kubernetes Hub** showing admission control coverage, policy compliance trends, and audit logs. **Success**: Generate auditor reports in <15 minutes entirely from Portal. |
 
 ## Customers and Business Impact 
 
-**Target Customers:**
+**Target Customers & Value Delivered**:
 
-- **Regulated Industries**: Financial services, healthcare, and government organizations with strict supply chain security and compliance requirements (SLSA, FedRAMP, SOC 2)
-- **Large Enterprises**: Organizations managing 50+ AKS clusters that require centralized policy enforcement and governance
-- **Security-Conscious ISVs**: Software vendors building on AKS who need to demonstrate supply chain security to their customers
+- **Regulated Industries** (Finance, Healthcare, Government): Achieve SLSA/FedRAMP compliance faster with tamper-proof, Portal-managed admission control
+- **Large Enterprises** (50+ AKS clusters): Eliminate admission control complexity; centralized policy enforcement via Kubernetes Hub replaces fragmented tools
+- **Security-Conscious ISVs**: Demonstrate supply chain security to end customers via unified first-party integration
 
-**Customer Impact:**
-
-Customers face significant operational overhead and security risk managing fragmented admission control solutions. This feature eliminates manual deployment complexity, prevents policy tampering, and provides a unified platform for enforcing supply chain security across their AKS fleet. Organizations can achieve compliance requirements faster, reduce security incidents from unverified or vulnerable images, and gain centralized visibility into policy enforcement across all clusters.
-
-**Business Impact:**
-
-- **Revenue Protection**: Prevent churn of enterprise customers struggling with admission control complexity
+**Business Outcomes**:
+- **Revenue Protection**: Prevent churn of enterprise customers struggling with fragmented solutions
 - **Revenue Growth**: Enable net-new sales in regulated industries where supply chain security is a gating requirement
-- **Azure Consumption**: Drive increased ACR Premium usage (signing features), Defender for Containers adoption, and Azure Policy consumption
+- **Azure Consumption**: Drive ACR Premium (signing), Defender for Containers, and Azure Policy adoption
 - **OKR Alignment**: 
-  - **FY25 Q3 Security OKR**: Increase % of AKS clusters with supply chain security controls
-  - **FY25 Q4 Compliance OKR**: Support FedRAMP High authorization requirements for AKS
+  - **FY25 Q3 Security OKR**: Increase AKS clusters with supply chain security controls to 45%
+  - **FY25 Q4 Compliance OKR**: Support FedRAMP High authorization for AKS
 
 ## Existing Solutions or Expectations 
 
-**Current Customer Approaches:**
+| Approach | Capabilities | Limitations |
+|----------|--------------|-------------|
+| **OPA/Gatekeeper** (Self-Managed) | Flexible custom policies written in Rego language; supports resource validation and mutation | Requires Rego expertise; runs in-cluster (can be modified/disabled by admins); customer manages installation, upgrades, and availability; no built-in integration with ACR signing or Defender scanning |
+| **Azure Policy for Kubernetes** | Enforce compliance policies across clusters; deny non-compliant resources; centralized governance via Azure Portal | Policy-based validation only; does not verify image signatures or check vulnerability scan results; limited to configuration/compliance enforcement |
+| **Defender for Containers** | Continuous vulnerability scanning of registry images; runtime threat detection; security posture management with CIS Benchmarks | Provides security insights and alerts but does not block deployments; requires separate tooling to enforce gates; no image signature verification |
+| **Defender Gated Deployment** | Block CI/CD deployments based on vulnerability scan results; integrates with Azure DevOps and GitHub Actions | Works only at CI/CD pipeline stage, not cluster admission; vulnerability scanning only (no signature verification, no attestation validation); separate configuration from cluster security policies |
+| **Image Integrity** | Verify Notary Project signatures on container images at deployment time; integrates with ACR artifact signing | Signature verification only; does not check vulnerability scan results or validate security configurations; no support for SBOM, SLSA, or other attestation types |
+| **Third-Party Solutions** (Aqua, Prisma Cloud, Twistlock) | Comprehensive scanning, policy engines, and runtime protection with custom policy rules | Additional licensing costs; deployed in-cluster (can be tampered with); requires separate management and integration work; not managed by Azure |
 
-1. **Self-Managed OPA/Gatekeeper**: 
-  - Customers deploy Gatekeeper via Helm and write Rego policies
-  - **Gaps**: Steep learning curve, no integration with Azure services, vulnerable to tampering, complex lifecycle management
-  
-2. **Azure Policy for Kubernetes**: 
-  - Uses Gatekeeper under the hood for policy enforcement
-  - **Gaps**: Limited to deny-based policies, no image signing verification, no vulnerability scanning integration
-  
-3. **Microsoft Defender for Containers (MDC)**: 
-  - Provides vulnerability scanning and runtime threat detection
-  - **Gaps**: Not designed for admission control, no real-time blocking at deployment time, requires manual policy translation, limited signature verification integration
-  
-4. **Microsoft Defender for Containers Gated Deployment (Preview)**:
-  - Leverages MDC vulnerability scanning results to block deployments of vulnerable images
-  - **Current Capabilities**: Integrates with CI/CD pipelines to gate deployments based on vulnerability scan results from MDC
-  - **Gaps**: 
-    - Limited to vulnerability gating only; no signature verification or misconfiguration validation
-    - Requires separate configuration from other AKS security controls
-    - No integration with Image Integrity for signature verification
-    - Limited to MDC scan results; cannot incorporate other attestation types (SBOM, SLSA provenance)
-    - Operates independently from AKS lifecycle management
-  
-5. **AKS Image Integrity (Preview)**: 
-  - Validates [Notary Project](https://github.com/notaryproject) signatures for container images (using Notation tooling)
-  - **Gaps**: Limited to signature verification only, no vulnerability or policy integration, separate configuration from other security controls, no support for third-party signing solutions
-  
-6. **Third-Party Solutions (Aqua, Prisma, Twistlock)**: 
-  - Rich policy engines with integrated scanning and signing
-  - **Gaps**: Require separate licensing, complex installation, no AKS lifecycle integration, can be disabled by cluster admins
+**Ideal Customer Experience or Northstar UX**: 
 
-**Key Challenge**: Today's solutions are fragmented—vulnerability scanning (MDC), signature verification (Image Integrity), gated deployment (Defender Gated Deployment), and policy enforcement (Azure Policy/Gatekeeper) operate independently with no unified orchestration or tamper-proof enforcement mechanism.
+A single, visual interface in Azure Portal where I can enable tamper-proof supply chain security gating (signatures + vulnerabilities + best practices) with simple toggles, receive instant clarity on why deployments fail with remediation guidance, and gain fleet-wide visibility into policy enforcement—without writing YAML or learning CLI commands.
+
 
 ## What will the announcement look like?
 
@@ -807,25 +784,21 @@ Similar structure with `vulnerabilityScanning` policy configuration.
 
 # Definition of Success 
 
-## Expected Impact: Business, Customer, and Technology Outcomes, Experiments + Measures 
+## Expected Impact: Strategic Outcomes and Key Metrics
 
-| No. | Outcome | Measure | Target | Priority  |
-|-----|---------|---------|---------|--------|
-| 1   | Increase supply chain security adoption | % of AKS clusters with admission control enabled | 45% of production clusters by GA+6mo | P0 |
-| 2   | Portal-first adoption | % of admission control configurations created via Portal vs CLI/API | >70% via Portal | P0 |
-| 3   | Reduce security incidents | # of production incidents from unverified/vulnerable images | 50% reduction in affected customers YoY | P0 |
-| 4   | Improve user experience satisfaction | CSAT score for admission control feature | ≥4.5/5.0 | P0 |
-| 5   | Drive ACR Premium adoption | # of ACR Premium registries with signing enabled | 30% increase QoQ | P1 |
-| 6   | Drive Defender for Containers adoption | # of subscriptions with Defender enabled for vulnerability scanning | 25% increase QoQ | P1 |
-| 7   | Reduce support burden | # of support tickets related to admission control configuration | 40% reduction vs. self-managed OPA/Gatekeeper baseline | P1 |
-| 8   | Meet performance SLA | p95 admission decision latency | <500ms | P0 |
-| 9   | Achieve reliability SLA | Admission control service availability | 99.9% | P0 |
-| 10  | Enable compliance | # of customers achieving SLSA L3 / FedRAMP compliance using this feature | 50 customers by GA+12mo | P1 |
+| Outcome | Measure | Target | Priority |
+|---------|---------|--------|----------|
+| **Portal-First UX Adoption** (North Star) | % of admission control configurations created via Portal vs CLI/API | **>70% via Portal** | **P0** |
+| **Feature Adoption** | % of production AKS clusters with admission control enabled | 45% by GA+6 months | P0 |
+| **Security Impact** | % reduction in security incidents from unverified/vulnerable images | 40-50% YoY | P0 |
+| **Revenue Growth** | # of new enterprise customers in regulated industries adopting AKS | 100+ net new by GA+12mo | P1 |
+| **Service Reliability** | Admission control service availability + p95 decision latency | 99.9% uptime + <500ms | P0 |
+| **Compliance Enablement** | # of customers achieving SLSA L3/FedRAMP compliance | 50+ customers by GA+12mo | P1 |
 
-**Experiments**:
-- **A/B Test (Preview)**: Default admission control ON for new clusters created via Portal (50% of regions) vs. OFF (control) → measure adoption rate and feedback sentiment
-- **Usability Study**: Observe 10 customers (mixed personas) configuring admission control using Portal with think-aloud protocol → iterate on UX based on friction points
-- **Performance Canary**: Deploy to 5% of clusters with telemetry to validate <500ms latency SLA before broader rollout
+**Validation Plan**:
+- **Portal Adoption**: Track telemetry on Portal vs. CLI/API configuration sources; >70% Portal target drives GTM messaging and onboarding guidance
+- **Usability Testing (Preview)**: Observe 10 customers across 4 personas configuring via Portal; iterate UX based on friction points
+- **Performance Validation**: Canary deployment to 5% of clusters; validate <500ms latency before GA
 
 ---
 
