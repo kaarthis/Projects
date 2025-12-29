@@ -62,7 +62,7 @@ Customer usage from [DATE]. Current usage can be tracked using this [dashboard/q
 TIPS: 
 - To query strategic customers, use: where Strategic400Flag == 'Yes' 
 - [Example retirement dashboard](https://dataexplorer.azure.com/dashboards/fcc772e5-ecdc-4373-9fe0-0c04fa94faf0?p-_startTime=1hours&p-_endTime=now#03a84a49-71bb-4458-913d-b985b5834299)
-- Air-gapped cloud usage is not query-able by AKS PM. Contact Daxa Patel < daxapatel@microsoft.com> for help. 
+- Air-gapped cloud usage is not query-able by AKS PM. Contact Daxa Patel <daxapatel@microsoft.com> for help. 
 
 ### Strategic Customer plan (OPTIONAL)  
 _Guidance: If your feature includes significant usage by strategic customers, use this section to outline which strategic customers are using the feature. Include your plan to ensure those strategic customers are notified and aware of the retirement._

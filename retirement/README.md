@@ -1,14 +1,14 @@
 # Retirements and Breaking Changes
 Use this folder for proposals for Retirements and Breaking Changes.
 
-## What is a breaking change? [aka.ms/CPEXBreakingChangeProcess](https://aka.ms/CPEXBreakingChangesProcess) 
+## What is a breaking change? [aka.ms/CPEXBreakingChangesProcess](https://aka.ms/CPEXBreakingChangesProcess) 
 A breaking change can consist of configuration or deployment changes or API-related breaking changes. If a customer is no longer able to do something they could before, consider if the change is minimal (requires only a breaking change) or feature/service level (requires a retirement).
 * Breaking changes typically require 90 days notice from announcement before the change can be made.
 
 ### Steps for a breaking change
 * Create a breaking change proposal.
 * Get approvals from AKS Leads (same as PRD).
-* Get approvals from Breaking Change Board. See office hours at: [aka.ms/CPEXBreakingChangeProcess](https://aka.ms/CPEXBreakingChangesProcess) or contact [azbreakchangereview@microsoft.com](mailto:azbreakchangereview@microsoft.com).
+* Get approvals from Breaking Change Board. See office hours at: [aka.ms/CPEXBreakingChangesProcess](https://aka.ms/CPEXBreakingChangesProcess) or contact [azbreakchangereview@microsoft.com](mailto:azbreakchangereview@microsoft.com).
 * After approval is received, continue with your breaking change.
 
 ### What to include in a breaking change proposal
