@@ -13,7 +13,7 @@ Work item link: []
 Retirement Guidance and Links: 
 - The below template is for preparing retirement content and justification for AKS Leads and Marketing approval.  
 - CPEX retirement trains occur in March and September. We recommend starting retirement tasks at least one month before. 
-- To understand if a CPEX retirement is needed for your feature retirement, see AKS Retirement Scenarios and Requirements. 
+- To understand if a CPEX retirement is needed for your feature retirement, see [AKS Retirement Scenarios and Requirements](https://microsoft.sharepoint.com/:w:/t/APEXProgram/EWezmtaQICRNhgBqMPDdhdEBPnXHlL9R5AREijaOXAocjg?e=ijiFP6). 
 - The official CPEX retirement process can be found at [aka.ms/cpexretirements](https://aka.ms/cpexretirements). 
 ```
 
@@ -22,7 +22,7 @@ Retirement Guidance and Links:
 ## Retirement Summary  
 _Guidance: Update the outline for your retiring feature. This will be the base for your published content in your email comms, release notes, and Github issue._ 
 
-[Feature/Service/Product Name w/ link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to [Replacement Product] by that date.    
+[Feature/Service/Product Name with link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to (Replacement Product)[Link to Migration guide] by that date.    
 
 (Insert reasoning for retirement – New Features, Improvement Performance, Security). We encourage you to transition to [Replacement Product] prior to the retirement date to experience the new capabilities of [Replacement Product] including [insert 1-3 new benefits available in the replacement product].   
     
