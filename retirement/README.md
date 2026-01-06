@@ -3,7 +3,7 @@ Use this folder for proposals for Retirements and Breaking Changes.
 
 ## What is a breaking change? [aka.ms/CPEXBreakingChangesProcess](https://aka.ms/CPEXBreakingChangesProcess) 
 A breaking change can consist of configuration or deployment changes or API-related breaking changes. If a customer is no longer able to do something they could before, consider if the change is minimal (requires only a breaking change) or feature/service level (requires a retirement).
-* Breaking changes typically require 90 days notice from announcement before the change can be made.
+* Breaking changes typically require 90 days notice from announcement before the change can be made.  To understand what notice period is needed for your feature retirement, see [AKS Retirement Scenarios and Requirements](https://microsoft.sharepoint.com/:w:/t/APEXProgram/EWezmtaQICRNhgBqMPDdhdEBPnXHlL9R5AREijaOXAocjg?e=ijiFP6). 
 
 ### Steps for a breaking change
 * Create a breaking change proposal.

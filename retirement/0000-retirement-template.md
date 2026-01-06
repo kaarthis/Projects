@@ -22,16 +22,16 @@ Retirement Guidance and Links:
 ## Retirement Summary  
 _Guidance: Update the outline for your retiring feature. This will be the base for your published content in your email comms, release notes, and Github issue._ 
 
-[Feature/Service/Product Name with link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to (Replacement Product)[Link to Migration guide] by that date.    
+[Feature/Service/Product Name with link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to [Replacement Product](Link to Migration guide) by that date.    
 
-(Insert reasoning for retirement – New Features, Improvement Performance, Security). We encourage you to transition to [Replacement Product] prior to the retirement date to experience the new capabilities of [Replacement Product] including [insert 1-3 new benefits available in the replacement product].   
+(Insert reasoning for retirement – New Features, Improvement Performance, Security. This should be a customer-facing explanation.). We encourage you to transition to [Replacement Product] prior to the retirement date to experience the new capabilities of [Replacement Product] including [insert 1-3 new benefits available in the replacement product].   
     
 From now to [Retirement Date] you can continue to use [Feature/Service/Product Name] without disruption. On [Retirement Date] (Insert expected customer impact such as data loss, workload breakage, can no longer scale, etc.). 
 
 ## Retirement Justification 
 _Guidance: Provide justification for retiring this feature. If an exception to the 3 year timeline is required, provide justification here._ 
 
-Retirement Justification: (Insert reasoning for retirement – New Features, Improvement Performance, Security) 
+Retirement Justification: (Insert reasoning for retirement – New Features, Improvement Performance, Security. This is internal-only so it can include justification such as COGS savings, code simplification, etc.) 
 
 3 year retirement exception justification: (If needed, describe why we cannot wait 3 years to retire. This justification will need to be brought to AKS PM CVP for approval.) 
 
@@ -40,7 +40,7 @@ _Guidance: Provide information on how a customer can migrate to the recommended 
 
 The below migration is [REQUIRED/RECOMMENDED] (select one). 
 
-Migration Plan: Customers can transition to [Replacement Product] by [Migration Steps].  
+Migration Plan: Customers can transition to [Replacement Product] by [Migration Steps]. For more information about these migration steps, see [aka.ms/aks/feature-name-retirement-migration](aka.ms link to migration guide).
 
 The below action is [REQUIRED/RECOMMENDED] (select one). 
 
@@ -76,11 +76,11 @@ Plan to notify Strategic Customers:
 ## Release Notes Template 
 _Guidance: Provide example release notes that you will publish regarding this retirement._
 
-[Feature/Service/Product Name w/ link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to [Replacement Product] by that date. For more information about this retirement, see [aka.ms/aks/feature-name-retirement]. 
+[Feature/Service/Product Name with link to AKS documentation] will be retired on DAY MONTH YEAR [Retirement Date], please transition to [Replacement Product](Link to migration guidance) by that date. For more information about this retirement, see [aka.ms/aks/feature-name-retirement]. 
 
 -----END OF TEMPLATE 
 
-TIP: The above aka.ms link should link to your github issue. Do not create a Github issue until you have retirement plan approval and the retirement dates are finalized. 
+CAUTION: The above aka.ms link should link to your github issue. **Do not create a Github issue until you have retirement plan approval and the retirement dates are finalized.** 
 
 ## Github Issue Template
 _Guidance: This content will be used in your github issue on AKS Github. It should match your email content._
@@ -105,8 +105,8 @@ Learn more about service retirements that may impact your resources in the Azure
 
 ----- END OF TEMPLATE 
 
-TIPS:  
-- Do not publish your Github issue until you have retirement plan approval and retirement dates are finalized. 
+CAUTION:  
+- **Do not publish your Github issue until you have retirement plan approval and retirement dates are finalized.** 
 - Make sure to include the “Announcement” tag 
 - Make sure to add to the AKS public Roadmap in the “Retirements” 
 
@@ -167,6 +167,11 @@ Consider leveraging experiments to enable data-driven decisions.
 |-----|---------|---------|---------|--------|
 | 1   |  |  |  |   |
 | 2   |  |  |  |   |
+
+## Retirement Landing
+After announcing the retirement, you should track feature usage to make sure that customers are migrating to the replacement product. If needed, you may need to send out additional communications or reach out to customers with high usage to aid in their migration. The Azure Comms team will reach out to you to send out reminders at intervals such as 1 year, 6 months, and 3 months until the retirement date.
+
+After the retirement date, there may still be customers using the feature. You should create a feature landing report for the retirement on the retirement date. Retirements can be considered landed when feature usage is at or near 0 and the feature has been removed from AKS code, tests, documentation, etc.
 
 #  Appendix 
 _Guidance: Extended information, diagrams, additional queries, and examples_
