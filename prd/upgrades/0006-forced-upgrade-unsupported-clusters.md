@@ -187,7 +187,7 @@ This feature is implemented in two distinct phases:
 │                            STEADY STATE                                      │
 │                       (Ongoing Enforcement)                                  │
 │                                                                              │
-│  Triggered by: New K8s version GA (e.g., 1.35 GA in Nov 2026)               │
+│  Triggered by: New K8s version GA (e.g., 1.38 GA in Nov 2026)               │
 │  This causes EOL of: 1.34 Community / 1.31 LTS                              │
 │  Note: All timelines are illustrative and may vary based on execution.      │
 │                                                                              │
@@ -200,16 +200,16 @@ This feature is implemented in two distinct phases:
 │  │         ↓                       │         ↓                             ││
 │  │ LTS pricing begins IMMEDIATELY  │ Force upgrade to 1.32 LTS             ││
 │  │ (No upgrade, no disruption)     │ (Bypass PDB after drain timeout)      ││
-│  │         ↓                       │ (3 retry attempts if failed)          ││
+│  │         ↓                       │ (Exponential backoff retry if failed) ││
 │  │ Opt-out: Upgrade to supported   │                                       ││
 │  │ community version               │                                       ││
 │  └─────────────────────────────────────────────────────────────────────────┘│
 │                                                                              │
 │  KEY STEADY STATE RULES:                                                     │
 │  • No cluster can exit "Always Supported" policy                            │
-│  • "None" channel deprecated (requires Breaking Change Board approval)      │
+│  • "None" channel retained—customers get manual control until EOL           │
 │  • "Patch" channel does NOT cross minor versions—platform takes over at EOL │
-│  • upgradeDriver field flips to "PlatformDriven" at EOL                     │
+│  • lastUpgradeSource field shows "PlatformDriven" after forced upgrade      │
 │  • Platform Support = 60-day grace for LTS clusters at EOL                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -224,16 +224,18 @@ Three options were evaluated for implementing steady state enforcement:
 |--------|-------------|------|------|
 | **Option 1:** Change `none` channel behavior | Keep the `none` enum value but change its behavior to allow platform-driven upgrades at EOL. | No API breaking change. Simple to implement. | Confusing for customers. `none` no longer means "no upgrades." Documentation mismatch. |
 | **Option 2:** Deprecate `none`, introduce `platform-forced` channel | Remove `none` and add a new channel value that explicitly signals platform-controlled upgrades. | Clear intent for customers. | Formal API breaking change process required. Customer migration effort. |
-| **Option 3 (Recommended):** Deprecate `none`, add read-only `upgradeDriver` status field | Remove `none` channel. Add a new read-only property in the auto-upgrade profile: `upgradeDriver` with enum values `CustomerDriven` or `PlatformDriven`. | Clear separation: Channels are always customer intent. Platform behavior is explicit and read-only. Minimal API bloat. Best customer communication. | Requires deprecation process for `none`. |
+| **Option 3 (Recommended):** Retain `none`, add read-only `lastUpgradeSource` field next to `kubernetesVersion` | Keep `none` channel for customers who want manual control (e.g., those falling back from `stable`). Add a new read-only property in `managedClusterProperties` (outside `autoUpgradeProfile`, next to `kubernetesVersion`): `lastUpgradeSource` with enum values `CustomerDriven` or `PlatformDriven`. | Clear separation: Channels represent customer intent (including explicit opt-out via `none`). Platform behavior is explicit and read-only. No breaking change for `none` users. Property location makes it clear this describes cluster state, not upgrade configuration. | Requires clear documentation that `none` still results in platform-driven upgrade at EOL. |
 
-**Recommendation: Option 3**
+
+**Recommendation: Option 3 — Retain `none`, add read-only `lastUpgradeSource` field next to `kubernetesVersion`**
 
 This option provides the clearest customer experience:
-- **Auto-upgrade channels** (`patch`, `stable`, `rapid`) represent **customer intent**—they are forward-looking and customer-driven.
-- **`upgradeDriver` property** (read-only) indicates whether the **customer** or **platform** will drive the next upgrade. This field is **computed dynamically** based on the cluster's current state—it is not a persistent setting.
-- When a cluster reaches EOL and the customer has not scheduled an upgrade, `upgradeDriver` flips to `PlatformDriven`, signaling imminent forced upgrade.
-- Once the cluster is upgraded (by customer or platform) to a supported version, `upgradeDriver` returns to `CustomerDriven`. See FAQ for detailed scenarios.
-- Deprecating `none` makes auto-upgrade channels always forward-looking. Default platform behavior becomes explicit via the read-only `upgradeDriver` field with clear documentation and portal UX.
+- **Auto-upgrade channels** (`none`, `patch`, `stable`, `rapid`) represent **customer intent**—they indicate the customer's preference for how upgrades should be handled under normal circumstances.
+- **`none` channel is retained:** Customers who want full manual control can continue to use `none`. This is valuable for customers who fall back from `stable` or `rapid` to manage upgrades themselves.
+- **`lastUpgradeSource` property** (read-only, located next to `kubernetesVersion` in `managedClusterProperties`) indicates **how the cluster reached its current version**. This field is **computed dynamically** based on cluster history—it is not a persistent setting and not part of `autoUpgradeProfile`.
+- Values: `CustomerDriven` (customer performed the upgrade) or `PlatformDriven` (platform forced the upgrade).
+- When the platform forces an upgrade at EOL, `lastUpgradeSource` becomes `PlatformDriven`, giving customers visibility into the platform action taken.
+- Clear documentation and portal UX communicate that even `none` channel clusters will receive platform-driven upgrades at EOL. The `lastUpgradeSource` field makes this behavior explicit and observable.
 
 #### Special Case: `patch` Channel at EOL
 
@@ -242,7 +244,7 @@ This option provides the clearest customer experience:
 **Behavior at EOL:**
 1. **Notification:** Customers on `patch` channel receive explicit warnings that their minor version is approaching EOL and `patch` channel will not save them.
 2. **Customer Action Window:** Customer can switch to `stable` or `rapid` channel, or perform a manual upgrade to a supported version.
-3. **Platform Takeover:** If the customer takes no action by EOL, `upgradeDriver` flips to `PlatformDriven` and the platform force-upgrades the cluster to the next LTS version (same as `none` channel behavior).
+3. **Platform Takeover:** If the customer takes no action by EOL, the platform force-upgrades the cluster to the next LTS version (same as `none` channel behavior). After the upgrade completes, `lastUpgradeSource` will show `PlatformDriven`.
 4. **Channel Preserved:** After the forced upgrade, the cluster's `upgradeChannel` remains `patch`. The platform only intervened for the EOL event; ongoing behavior reverts to customer-driven patch upgrades.
 
 **Rationale:** Customers on `patch` explicitly chose patch-only behavior, meaning they accept responsibility for minor version upgrades. If they do not act, platform-driven upgrade to LTS is a safe fallback that keeps them supported.
@@ -271,7 +273,7 @@ This option provides the clearest customer experience:
 
 | Change | Impact | Mitigation |
 |--------|--------|------------|
-| **Deprecation of `none` auto-upgrade channel** | Customers using `none` will need to select a new channel or accept platform-driven upgrades. Requires Breaking Change Board approval. | 12-month deprecation notice. Clear migration guidance. Terraform/Bicep examples provided. |
+| **Retain `none` channel, add read-only `lastUpgradeSource` field** | Customers using `none` can continue to use it for manual control. Platform behavior at EOL is now explicit via the `lastUpgradeSource` field (located next to `kubernetesVersion`). Customers must understand that `none` still results in platform-driven upgrade at EOL. | Clear documentation that `none` channel clusters will receive platform-driven upgrades at EOL. `lastUpgradeSource` field makes this behavior explicit and observable in API/Portal. |
 | **Forced upgrades at EOL** | Customers who previously remained on unsupported versions will experience mandatory upgrades. Forced upgrades will push through PDB blocks (using [force upgrade with bypass PDB](https://learn.microsoft.com/en-us/azure/aks/upgrade-options#option-1-force-upgrade-bypass-pdb) after drain timeout) and handle API deprecations. | Multi-month advance warning. Upgrades respect maintenance windows when configured. |
 
 ---
@@ -284,7 +286,7 @@ This option provides the clearest customer experience:
 - **GKE:** Retries upgrades with exponential backoff over several days.
 - **EKS:** Attempts upgrade in maintenance windows, retries if failed.
 
-**AKS Approach:** The platform will attempt forced upgrade **3 times** with appropriate backoff. If all retry attempts fail, the cluster enters an "out of support" state and the customer is alerted to take manual action.
+**AKS Approach:** The platform will continue attempting forced upgrades with appropriate backoff until successful. There is no cap on retry attempts—the platform will persist until the cluster is upgraded to a supported version.
 
 **Post-Upgrade State:** If a forced upgrade fails after all retries:
 1. Cluster remains in unsupported state.
@@ -307,51 +309,65 @@ This option provides the clearest customer experience:
 ### Portal Experience
 
 **Cluster Overview Blade:**
-- New banner: "This cluster is on version X.XX which reaches end-of-support on [Date]. [Upgrade Now] or AKS will upgrade automatically."
-- **Special banner for `patch` channel clusters:** "This cluster uses the `patch` channel, which only upgrades within the same minor version. Your minor version X.XX reaches end-of-support on [Date]. Switch to `stable`/`rapid` or upgrade manually, or AKS will upgrade automatically."
-- New status indicator: `Support Status: Supported | Approaching EOL | Platform Upgrade Scheduled`
-- Display `upgradeDriver` status when `PlatformDriven` to clearly indicate the platform will perform the upgrade.
+- **EOL Warning Banner:** "This cluster is on version X.XX which reaches end-of-support on [Date]. [Upgrade Now] or AKS will upgrade automatically."
+- **`patch` Channel Warning:** "This cluster uses the `patch` channel, which only upgrades within the same minor version. Your minor version X.XX reaches end-of-support on [Date]. Switch to `stable`/`rapid` or upgrade manually, or AKS will upgrade automatically."
+- **Post-Action Banner:** "This cluster was [upgraded to X.XX / converted to LTS] by AKS on [Date]. View details in the [Activity Log]."
+- **Status Indicator:** `Support Status: Supported | Approaching EOL | Platform Upgrade Scheduled`
+- Display `lastUpgradeSource` status when `PlatformDriven`.
 - For LTS-converted clusters: Display LTS billing status and link to opt-out instructions.
 
+**Activity Log Integration:**
+- All platform-driven upgrades and LTS conversions are logged as ARM activity log events.
+- Event includes: action type, previous/new version, timestamp, and initiator (`PlatformDriven`).
+- Customers can query via Azure Portal Activity Log or `az monitor activity-log list`.
+
 **Kubernetes Hub (Fleet View):**
-- Dashboard showing: "X clusters approaching EOL in next 30/60/90 days"
+- Dashboard: "X clusters approaching EOL in next 30/60/90 days"
 - Filter: "Show clusters requiring action"
-- Indicator for clusters where `upgradeDriver = PlatformDriven`
+- Indicator for clusters where `lastUpgradeSource = PlatformDriven`
+- Column: "Last Platform Action" showing recent auto-upgrades/conversions
 
 ### API
 
-**New read-only property in `managedClusterProperties.autoUpgradeProfile`:**
+**New read-only property in `managedClusterProperties` (next to `kubernetesVersion`):**
 
 ```json
 {
-  "autoUpgradeProfile": {
-    "upgradeChannel": "stable",
-    "nodeOSUpgradeChannel": "NodeImage",
-    "upgradeDriver": "CustomerDriven"  // Read-only. Enum: CustomerDriven | PlatformDriven
-  }
+    "properties": {
+        "kubernetesVersion": "1.30.0",
+        "lastUpgradeSource": "CustomerDriven",  // Read-only. Enum: CustomerDriven | PlatformDriven
+        "autoUpgradeProfile": {
+            "upgradeChannel": "none",
+            "nodeOSUpgradeChannel": "NodeImage"
+        }
+    }
 }
 ```
 
-When `upgradeDriver` is `PlatformDriven`, it indicates the platform will force an upgrade because:
-- The cluster is on an unsupported version (Transition State), OR
-- The cluster has reached EOL and entered the 60-day platform support grace period with no customer upgrade scheduled (Steady State).
+**`lastUpgradeSource` field:**
+- **Location:** `managedClusterProperties` (outside `autoUpgradeProfile`, next to `kubernetesVersion`)
+- **Type:** Read-only enum (`CustomerDriven` | `PlatformDriven`)
+- **Purpose:** Indicates how the cluster reached its current `kubernetesVersion`.
+- `CustomerDriven`: The last upgrade was initiated by the customer (via API, CLI, Portal, or auto-upgrade channel).
+- `PlatformDriven`: The last upgrade was forced by the platform due to EOL policy enforcement.
 
-**Note:** The `upgradeDriver` field flips to `PlatformDriven` **at EOL**, not before. This provides clear signal that platform-driven action is imminent.
+**Note:** This field reflects **historical state** (how the cluster reached its current version), not **future intent**. It provides audit trail and visibility into platform actions.
 
-**Deprecation of `none` channel:**
-- `upgradeChannel: "none"` will return a deprecation warning in API responses starting [Date].
-- `none` channel must be deprecated on or before steady state timelines. Exact timing is flexible but deprecation must be complete before steady state enforcement begins.
-- This requires Breaking Change Board approval.
-- Existing clusters with `none` will be migrated to the new behavior (platform-driven at EOL).
+**`none` channel behavior:**
+- `none` channel is retained for customers who want manual control (e.g., those falling back from `stable`).
+- Clear documentation and portal UX communicate that even `none` channel clusters will receive platform-driven upgrades at EOL.
+- The `lastUpgradeSource` field makes platform actions explicit and observable.
 
 ### CLI Experience
 
 **New output in `az aks show`:**
 ```
+Kubernetes Version: 1.30.0
+Last Upgrade Source: CustomerDriven   <-- NEW (next to kubernetesVersion)
+
 Auto Upgrade Profile:
-  Upgrade Channel: stable
-  Node OS Upgrade Channel: NodeImage
-  Upgrade Driver: CustomerDriven   <-- NEW
+    Upgrade Channel: none
+    Node OS Upgrade Channel: NodeImage
 ```
 
 
@@ -391,9 +407,9 @@ Auto Upgrade Profile:
 | 1 | System must identify all clusters on unsupported versions and flag them for forced upgrade. | P0 |
 | 2 | System must send notifications at T-6, T-3, and T-1 months before forced upgrade. | P0 |
 | 3 | Forced upgrades must respect customer-configured maintenance windows. If no window is configured, platform uses system convenience timing (platform-determined, not a specific default like weekends). | P0 |
-| 4 | Forced upgrades must use the [Force Upgrade (Bypass PDB)](https://learn.microsoft.com/en-us/azure/aks/upgrade-options#option-1-force-upgrade-bypass-pdb) method after drain timeout. Platform will retry 3 times; if all attempts fail, cluster enters out-of-support state and customer is alerted. | P0 |
-| 5 | API must expose `upgradeDriver` read-only property indicating `CustomerDriven` or `PlatformDriven`. The flip to `PlatformDriven` must occur at EOL, not before. | P0 |
-| 6 | `none` auto-upgrade channel must be deprecated with Breaking Change Board approval. Deprecation must be complete on or before steady state enforcement begins. | P0 |
+| 4 | Forced upgrades must use the [Force Upgrade (Bypass PDB)](https://learn.microsoft.com/en-us/azure/aks/upgrade-options#option-1-force-upgrade-bypass-pdb) method after drain timeout. Platform will use exponential backoff retry strategy (GKE-style, no fixed cap) until the cluster is upgraded; if consistently failing, cluster is flagged and customers alerted. | P0 |
+| 5 | API must expose `lastUpgradeSource` read-only property in `managedClusterProperties` (next to `kubernetesVersion`) indicating `CustomerDriven` or `PlatformDriven`. This field reflects how the cluster reached its current version. | P0 |
+| 6 | `none` auto-upgrade channel must be retained. Documentation must clearly explain that `none` channel clusters will receive platform-driven upgrades at EOL, made explicit via the `lastUpgradeSource` field after the upgrade. | P0 |
 | 7 | Clusters on `patch` channel must receive specific notification that `patch` does not cross minor versions and they must take action before EOL or accept platform-driven upgrade. | P0 |
 | 8 | Portal must display clear support status and forced upgrade schedule for each cluster. | P0 |
 | 9 | Kubernetes Hub must provide fleet-wide view of clusters approaching EOL. | P1 |
@@ -407,11 +423,11 @@ Auto Upgrade Profile:
 | 1 | E2E test: Cluster on unsupported version receives forced upgrade at scheduled time. | P0 |
 | 2 | E2E test: Forced upgrade respects maintenance window configuration. | P0 |
 | 3 | E2E test: Notification pipeline delivers emails at T-6, T-3, T-1 months. | P0 |
-| 4 | E2E test: `upgradeDriver` property correctly reflects platform vs. customer control. | P0 |
-| 5 | E2E test: Forced upgrade succeeds without rollback in 99.5% of cases. After 3 retry attempts, failed clusters are flagged and customers alerted. | P0 |
-| 6 | E2E test: Clusters with `none` channel receive deprecation warning in API response. | P1 |
+| 4 | E2E test: `lastUpgradeSource` property correctly reflects platform vs. customer-driven upgrades. | P0 |
+| 5 | E2E test: Forced upgrade succeeds without rollback in 99.5% of cases. Platform uses exponential backoff retry; persistently failing clusters are flagged and customers alerted. | P0 |
+| 6 | E2E test: Clusters with `none` channel at EOL receive forced upgrade and `lastUpgradeSource` shows `PlatformDriven` afterward. | P0 |
 | 7 | E2E test: Clusters on `patch` channel approaching EOL receive specific warning about minor version limitation. | P0 |
-| 8 | E2E test: Clusters on `patch` channel at EOL have `upgradeDriver` flip to `PlatformDriven` and receive forced upgrade. | P0 |
+| 8 | E2E test: Clusters on `patch` channel at EOL receive forced upgrade and `lastUpgradeSource` shows `PlatformDriven` afterward. | P0 |
 | 9 | Load test: System can process forced upgrades for 10,000+ clusters in a single day. | P1 |
 
 ---
@@ -423,11 +439,12 @@ Auto Upgrade Profile:
 | 1 | **Notification pipeline integration** | Comms Manager team. Risk: Delivery failures. Mitigation: Multi-channel (email + portal + advisor). |
 | 2 | **Maintenance window enforcement** | AKS RP team. Risk: Edge cases where no window is configured. Mitigation: Use system convenience timing (platform-determined) if no window set—not a specific default like weekends. |
 | 3 | **Customer backlash** | Risk: Customers unhappy with forced upgrades or unexpected LTS billing. Mitigation: 12-month advance notice, clear communication, respect for maintenance windows, clear LTS opt-out documentation. |
-| 4 | **API deprecation process** | ARM/API Review board / Breaking Change Board. Risk: Delays in approving `none` channel deprecation. Mitigation: Start process early (Q1 2026). This is a hard dependency. |
+| 4 | **Documentation clarity for `none` channel** | AKS Docs team. Risk: Customers on `none` may not understand platform will still upgrade at EOL. Mitigation: Clear documentation, portal UX, and `lastUpgradeSource` field visibility after platform action. |
 | 5 | **Upgrade reliability** | AKS Upgrade team. Risk: Forced upgrades fail at higher rate than voluntary. Mitigation: Use same safe upgrade infrastructure (surge, health gates). |
 | 6 | **LTS pricing transition** | Finance/Billing team. Risk: Customer confusion about pricing change when community converts to LTS. Mitigation: Clear billing documentation, LTS pricing meter activates immediately, clear opt-out instructions in portal and docs. |
 
 ---
+
 
 # Compete 
 
@@ -484,7 +501,7 @@ Auto Upgrade Profile:
 When a minor version reaches EOL:
 1. Customers on `patch` receive explicit warnings starting T-6 months that their minor version is approaching EOL and the `patch` channel will not upgrade them.
 2. Customers can switch to `stable` or `rapid` channel, or perform a manual upgrade.
-3. If no action is taken by EOL, the `upgradeDriver` flips to `PlatformDriven` and the platform force-upgrades the cluster to the next LTS version.
+3. If no action is taken by EOL, the platform force-upgrades the cluster to the next LTS version. After the upgrade, `lastUpgradeSource` will show `PlatformDriven`.
 4. After the forced upgrade, the cluster's `upgradeChannel` remains `patch`. The platform only intervened for the EOL event.
 
 **Key Point:** Choosing `patch` means the customer accepts responsibility for minor version upgrades. The platform only takes over at EOL as a safety net.
@@ -496,35 +513,42 @@ When a minor version reaches EOL:
 ### Q: How is `patch` channel different from `none` channel after this change?
 
 **A:** 
-- **`none` (deprecated):** Customer explicitly opted out of all automatic upgrades. Platform takes over at EOL.
+- **`none`:** Customer explicitly opted out of all automatic upgrades. Customer retains full manual control. Platform takes over at EOL only if customer does not act.
 - **`patch`:** Customer opted in to automatic patch upgrades within the same minor version. Customer is responsible for minor version upgrades. Platform takes over at EOL only if customer does not act.
 
-Both result in platform-driven upgrade at EOL, but `patch` provides automatic security patches within the minor version, while `none` provided no automatic upgrades at all.
+Both result in platform-driven upgrade at EOL, but `patch` provides automatic security patches within the minor version, while `none` provides no automatic upgrades at all. The `none` channel is retained for customers who want full manual control (e.g., those falling back from `stable` or `rapid`).
 
 ### Q: What if I want automatic minor version upgrades but less frequently than `stable`?
 
 **A:** Consider using the `stable` channel, which upgrades to new minor versions after they have been proven in the `rapid` channel. Alternatively, you can use `patch` and manually upgrade minor versions on your own schedule—but you must do so before EOL or the platform will upgrade for you.
 
-### Q: The `upgradeDriver` field is read-only. When does it change from `PlatformDriven` back to `CustomerDriven`?
+### Q: The `lastUpgradeSource` field is read-only. What does it indicate?
 
-**A:** The `upgradeDriver` field is **computed dynamically** based on the cluster's current state. It is not a persistent setting—it reflects real-time status.
+**A:** The `lastUpgradeSource` field is **computed dynamically** and indicates **how the cluster reached its current `kubernetesVersion`**. It is not a forward-looking indicator but a historical record.
 
-**Scenarios where `upgradeDriver` returns to `CustomerDriven`:**
+- `CustomerDriven`: The last upgrade was initiated by the customer (via API, CLI, Portal, or auto-upgrade channel such as `stable`/`rapid`).
+- `PlatformDriven`: The last upgrade was forced by the platform due to EOL policy enforcement.
 
-| Scenario | What Happened | Result |
-|----------|---------------|--------|
-| **Customer upgrades before forced upgrade** | Customer manually upgrades or the auto-upgrade channel (`stable`/`rapid`) upgrades the cluster to a supported version before the platform acts. | `upgradeDriver` → `CustomerDriven` |
-| **Platform completes forced upgrade** | Platform successfully force-upgrades the cluster to the next LTS version. Cluster is now on a supported version. | `upgradeDriver` → `CustomerDriven` |
-| **Customer switches to minor-crossing channel** | Customer on `patch` or deprecated `none` switches to `stable` or `rapid` channel before EOL. The new channel will handle the upgrade. | `upgradeDriver` → `CustomerDriven` |
-| **LTS cluster exits grace period via customer action** | During the 60-day platform support grace period, customer upgrades the LTS cluster to the next LTS version manually. | `upgradeDriver` → `CustomerDriven` |
+**Example scenarios:**
 
-**Key Insight:** Once a cluster is on a supported version and has a forward-looking upgrade path (via channel or customer intent), `upgradeDriver` is `CustomerDriven`. The field only shows `PlatformDriven` when the cluster is at or past EOL with no scheduled customer-driven upgrade.
+| Scenario | What Happened | `lastUpgradeSource` Value |
+|----------|---------------|---------------------------|
+| **Customer manually upgrades** | Customer upgrades from 1.29 to 1.30 via CLI or Portal. | `CustomerDriven` |
+| **Auto-upgrade channel upgrades** | Cluster on `stable` channel automatically upgrades to 1.30. | `CustomerDriven` |
+| **Platform forces upgrade at EOL** | Customer took no action; platform force-upgraded to 1.30 LTS. | `PlatformDriven` |
+| **Customer upgrades after platform action** | After platform forced upgrade to 1.30, customer later upgrades to 1.31. | `CustomerDriven` |
 
-### Q: Can a customer prevent `upgradeDriver` from ever becoming `PlatformDriven`?
+**Key Insight:** The `lastUpgradeSource` field provides audit trail visibility. After any customer-initiated upgrade (manual or via auto-upgrade channel), the field returns to `CustomerDriven`. It only shows `PlatformDriven` immediately after a platform-forced upgrade.
 
-**A:** Yes. A cluster's `upgradeDriver` will never become `PlatformDriven` if:
+### Q: Can a customer avoid the platform ever forcing an upgrade (and thus `lastUpgradeSource` being `PlatformDriven`)?
+
+**A:** Yes. A cluster will never experience a platform-driven upgrade if:
 1. The cluster uses `stable` or `rapid` auto-upgrade channel (these channels automatically upgrade to new minor versions before EOL).
 2. The customer proactively upgrades manually before EOL.
-3. The customer configures a maintenance window and has scheduled an upgrade before the EOL date.
+3. The customer configures a maintenance window and upgrades before the EOL date.
 
-**Best Practice:** Use `stable` or `rapid` channel with a configured maintenance window to ensure upgrades happen on your schedule and `upgradeDriver` always remains `CustomerDriven`.
+**Best Practice:** Use `stable` or `rapid` channel with a configured maintenance window to ensure upgrades happen on your schedule and `lastUpgradeSource` always shows `CustomerDriven`.
+
+### Q: Is the `none` channel being deprecated?
+
+**A:** No. The `none` channel is **retained** for customers who want full manual control over upgrades. This is valuable for customers who fall back from `stable` or `rapid` to manage upgrades themselves. However, clear documentation and portal UX communicate that even `none` channel clusters will receive platform-driven upgrades at EOL. After a platform-driven upgrade, the `lastUpgradeSource` field will show `PlatformDriven`, providing visibility into the platform action taken.
