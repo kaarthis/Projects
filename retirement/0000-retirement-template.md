@@ -33,7 +33,7 @@ _Guidance: Provide justification for retiring this feature. If an exception to t
 
 Retirement Justification: (Insert reasoning for retirement – New Features, Improvement Performance, Security. This is internal-only so it can include justification such as COGS savings, code simplification, etc.) 
 
-3 year retirement exception justification: (If needed, describe why we cannot wait 3 years to retire. This justification will need to be brought to AKS PM CVP for approval.) 
+3 year retirement exception justification: (If needed, describe why we cannot wait 3 years to retire. This justification will need to be brought to AKS CVP for approval. Include links to docs with more information if applicable.) 
 
 ## Migration Plan/Customer Action Required 
 _Guidance: Provide information on how a customer can migrate to the recommended alternative. And is there any other action customers need to perform._
