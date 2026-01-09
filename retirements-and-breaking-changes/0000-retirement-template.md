@@ -73,6 +73,28 @@ Plan to notify Strategic Customers:
 
 # Communication Plan
 
+## Communications Schedule
+_Guidance: Provide a schedule for when announcements and reminders will be sent to affected customers._
+
+|Communications | Communications format | Date |
+| Retirement announcement| Release notes, Github issue, Azure Comms, Marketing Disclosure, Documentation update | [ADD Retirement announcement DATE] |
+| Retirement reminder | Release notes, Github issue, Azure Comms | [2 years before retirement date] |
+| Retirement reminder | Release notes, Github issue, Azure Comms | [1 year before retirement date] |
+| Retirement reminder | Release notes, Github issue, Azure Comms | [6 months before retirement date] |
+| Retirement reminder | Release notes, Github issue, Azure Comms | [3 months before retirement date] |
+| Retirement Notice (Feature is now retired, include removal date if applicable) | Release notes, Github issue, Azure Comms | [Retirement date] |
+| Removal Notice (Feature is now removed) | Release notes, Github issue, Azure Comms | [Removal Date] |
+
+_Note: The above schedule assumes a 3 year retirement timeframe. If you've gotten an exception to retire your feature in a reduced timeframe, you'll need to adjust the above table accordingly._
+
+## AKS Documentation Retirement Notice
+_Guidance: You should add a retirement notice to any AKS public documentation that uses the retiring feature._
+
+> [!CAUTION]
+> In this article, there are references to [Retiring Feature] that are being deprecated for AKS:
+>
+> Starting on [RETIREMENT DATE], AKS will no longer support [RETIRING FEATURE NAME]. [Insert expected customer impact such as data loss, workload breakage, can no longer scale, etc.] Migrate to [Replacement Product, including link with migration guidance]. For more information on this retirement, see [AKS Github Issues](ADD LINK TO YOUR RETIREMENT GITHUB ISSUE).
+
 ## Release Notes Template 
 _Guidance: Provide example release notes that you will publish regarding this retirement._
 
@@ -99,7 +121,7 @@ To avoid service disruptions, please follow our instructions to migrate (hyperli
 
 Help and support  
 
-If you have questions, get answers from community experts in  Microsoft Q&A or AKS GitHub. If you have a support plan and you need technical help, create a support request.   
+If you have questions, get answers from community experts in  [Microsoft Q&A](https://docs.microsoft.com/answers/topics/25346/azure-kubernetes-service.html) or AKS GitHub [ADD LINK TO GITHUB ISSUE]. If you have a support plan and you need technical help, create a [support request](https://ms.portal.azure.com/#create/Microsoft.Support/Parameters/%7B%0D%0A%09%22subId%22%3A+%22%22%2C%0D%0A%09%22pesId%22%3A+%225a3a423f-8667-9095-1770-0a554a934512%22%2C%0D%0A%09%22supportTopicId%22%3A+%2291f57f19-e9bb-a65c-ecbe-1faf664237e5%22%2C%0D%0A).   
 
 Learn more about service retirements that may impact your resources in the Azure Retirement Workbook. Please note that retirements may not be visible in the workbook for up to two weeks after being announced.    
 
@@ -140,7 +162,7 @@ Customers can [Reduce impact, prepare for retirement, etc.] by [Action].
 
 Help and support  
 
-If you have questions, get answers from community experts in  Microsoft Q&A or AKS GitHub<Update to github issue specific to your retirement>. If you have a support plan and you need technical help, create a support request.   
+If you have questions, get answers from community experts in  [Microsoft Q&A](https://docs.microsoft.com/answers/topics/25346/azure-kubernetes-service.html) or AKS GitHub [ADD LINK TO GITHUB ISSUE]. If you have a support plan and you need technical help, create a [support request](https://ms.portal.azure.com/#create/Microsoft.Support/Parameters/%7B%0D%0A%09%22subId%22%3A+%22%22%2C%0D%0A%09%22pesId%22%3A+%225a3a423f-8667-9095-1770-0a554a934512%22%2C%0D%0A%09%22supportTopicId%22%3A+%2291f57f19-e9bb-a65c-ecbe-1faf664237e5%22%2C%0D%0A).    
 
 To learn more, visit: <<aka.ms LINK>>  
 
