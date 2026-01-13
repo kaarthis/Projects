@@ -296,6 +296,11 @@ This option provides the clearest customer experience:
 2. **Tier transitions should be explicit:** Customers should always make an active choice to move between community and LTS tiers. Automatic tier transitions blur the line between these offerings.
 3. **Customer trust:** Implicit pricing changes erode customer trust, even with advance notification.
 
+
+the following guidance from the [Azure Pricing Principles](https://microsoft.sharepoint.com/:w:/t/CEBPCL/EW68s68e02pJt4njC_i58KIBOUVa-EX8sZS-0OEk_NAdNw?e=hf7DoR&CID=B4B75B7C-4F09-47F2-979B-36FE73571881&wdLOR=cCAF54436-81BB-4817-9A70-0B38D5186779):
+
+> Given cloud pricing dynamics, customer expectations favor price reductions over increases—even for reasonable value-adds like LTS.
+
 **Chosen Approach:** Community clusters at EOL receive a 60-day platform support grace period, then are force-upgraded to the next supported community version. LTS clusters at EOL are force-upgraded to the next LTS version. No tier transitions occur, ensuring no surprise billing.
 
 ---
