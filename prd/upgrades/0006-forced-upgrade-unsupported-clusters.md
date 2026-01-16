@@ -56,6 +56,8 @@ AKS will implement a **two-phase strategy** to eliminate the unsupported cluster
 
 5. **Minimize Disruption:** Forced upgrades respect customer-configured maintenance windows; if no maintenance window is configured, platform uses system convenience timing (platform-determined, not a specific day like weekend). Clusters stay within their tier (community or LTS) to avoid surprise billing changes.
 
+6. **Exception Process:** Customers requiring exceptions to the forced upgrade policy must obtain CVP approval to be added to an allow list.
+
 ### Non-Functional Goals
 
 1. **Security & Compliance:** Ensure all clusters run versions eligible for upstream security patches, supporting Microsoft SFI requirements and customer compliance frameworks (FedRAMP, SOC 2).
@@ -66,7 +68,7 @@ AKS will implement a **two-phase strategy** to eliminate the unsupported cluster
 
 1. **Skip Version Upgrades:** Enabling customers to skip multiple minor versions in a single upgrade is a separate feature and out of scope for this PRD.
 2. **Rollback to Unsupported Versions:** The platform will not allow rollback to a version that is no longer supported.
-3. **Exception Process Definition:** A small number of customers may require exceptions. The mechanism for handling exceptions is outside the scope of this PRD.
+
 
 ---
 
@@ -115,27 +117,72 @@ AKS will implement a **two-phase strategy** to eliminate the unsupported cluster
 
 ## What will the announcement look like?
 
-**Announcing "Always Supported" Policy for Azure Kubernetes Service (AKS)**
+**Keeping Your AKS Clusters Secure and Supported: Introducing Predictable Upgrades for End-of-Support Versions**
 
-We are announcing a new policy to ensure all AKS clusters remain on supported Kubernetes versions at all times. Starting **[Date]**, AKS will automatically upgrade clusters that have not been upgraded by customers before their version reaches end-of-support.
+Running Kubernetes requires staying current with supported versions. Until today, if a cluster ran into an out-of-support state, AKS—as [documented](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions)—reserved the right to upgrade it automatically in situations where it might pose security risks. While we always notify before this happens, we understand that this poses challenges as it can occur at unplanned times.
 
-**Addressing Key Challenges**
+Over the past few years, we've continued our journey to help every customer remain secure, patched, and supported. We've introduced improvements to make upgrades easier and more transparent, including:
+- **Breaking change detection** to help you identify potential issues before upgrading
+- **Long Term Support (LTS)** versions for customers who need extended stability
+- **Enhanced auto-upgrade channels** (`stable`, `rapid`, `patch`) to automate version management
+- **Planned Maintenance Windows** to give you control over when upgrades occur
+- **SecurityPatch node OS upgrade channel** to apply security-only patches to your nodes with minimal disruption and reduced risk of regressions
 
-Running Kubernetes clusters on unsupported versions exposes customers to unpatched security vulnerabilities and operational risk. Today, over 35% of AKS clusters run on unsupported versions. This new policy eliminates this risk by ensuring every cluster stays within the supported version window.
+Today, we take the next step in that journey by making upgrades of unsupported clusters **predictable and programmatic**—ensuring you stay supported always with no surprise charges.
 
-**How It Works**
+**What's Changing**
 
-1. **Transition Phase (Now - August 2026):** If your cluster is currently on an unsupported version, you will receive notifications to upgrade. If you do not upgrade by the cutoff date, AKS will upgrade your cluster to the next supported version.
+We are introducing an "Always Supported" policy: AKS will now upgrade clusters on a **defined, predictable schedule**—not at unplanned times.
 
-2. **Steady State (November 2026 onward):** When a cluster's version reaches end-of-support, it enters a 60-day [platform support](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#platform-support-policy) grace period. After the grace period, AKS will force upgrade community clusters to the next supported community version, and LTS clusters to the next LTS version. **No tier transitions occur**—community stays community, LTS stays LTS, ensuring no surprise billing changes.
+**Key Terminology**
 
-**Important for `none` and `patch` channel users:** The `none` channel is retained for customers who want manual control over upgrades. However, both `none` and `patch` channels are subject to platform-enforced upgrades at EOL. The `patch` channel only upgrades within the same minor version—it will NOT upgrade you to a new minor version when your current version reaches EOL. If you are on either `none` or `patch` channel, you must upgrade manually (or switch to `stable`/`rapid`) before EOL, or AKS will upgrade your cluster automatically.
+To avoid confusion, we use two distinct terms:
+- **End of Community Support**: The date when a Kubernetes version exits community support and enters the 60-day [Platform Support](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#platform-support-policy) grace period. You can still upgrade manually during this time.
+- **End of Platform Support**: The date when the 60-day grace period ends. If you have not upgraded by this date, AKS will force-upgrade your cluster.
 
-**Availability**
+**Exact Timing: When Will My Cluster Be Upgraded?**
 
-This policy applies to all AKS clusters. Customers will receive at least 6 months of advance notice via email, Azure Portal banners, and Azure Advisor recommendations.
+- **On your version's End of Community Support date:** Your cluster enters a 60-day Platform Support grace period. During this time, you can still upgrade manually.
+- **On your version's End of Platform Support date (60 days later):** If you have not upgraded, AKS will upgrade your cluster to the next supported version **during your configured maintenance window**. If no maintenance window is configured, the upgrade occurs at a platform-determined time.
 
-For more information, review the detailed documentation on the new "Always Supported" policy.
+This means you always know exactly when an automatic upgrade will occur: **60 days after your version's published End of Community Support date**.
+
+**Two Phases**
+
+1. **Transition Phase (Now through August 2026):** If your cluster is currently on an unsupported version, you will receive notifications with specific dates. If you do not upgrade by **August 31, 2026**, AKS will upgrade your cluster to the next supported version.
+
+2. **Steady State (November 2026 onward):** Going forward, when any cluster's version reaches End of Community Support, the 60-day Platform Support grace period begins automatically. At the End of Platform Support, AKS upgrades the cluster:
+   - **Community clusters** → upgraded to the next supported community version
+   - **LTS clusters** → upgraded to the next LTS version
+   - **No tier transitions**—community stays community, LTS stays LTS. No surprise billing changes.
+
+**For Customers Using `none` or `patch` Channels**
+
+The `none` channel remains available for customers who want full manual control. However, both `none` and `patch` channels are subject to forced upgrades at End of Platform Support. The `patch` channel only upgrades within the same minor version—it will **not** upgrade you to a new minor version.
+
+If you are on `none` or `patch` channel, you must either:
+- Upgrade manually before your version's End of Platform Support date, or
+- Switch to `stable` or `rapid` channel for automatic minor version upgrades
+
+Otherwise, AKS will upgrade your cluster at the End of Platform Support (60 days after End of Community Support).
+
+**Option for Extended Support Without Immediate Upgrades**
+
+If you need more time on your current version and are willing to pay for extended support, consider opting into **[Long Term Support (LTS)](https://learn.microsoft.com/en-us/azure/aks/long-term-support)**. When you opt into LTS *before* your community version reaches End of Community Support:
+- **LTS pricing only begins after the community version's End of Community Support date**—you won't pay LTS pricing while your version is still in community support
+- You gain an additional 12 months of support beyond community End of Community Support
+- This gives you a longer runway to plan and execute upgrades on your schedule
+
+This is ideal for customers who want to avoid forced upgrades but need more time to validate and test before upgrading.
+
+**What You Should Do**
+
+1. **Check your cluster versions** in the Azure Portal or via `az aks show`
+2. **Review the [AKS Kubernetes Release Calendar](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#aks-kubernetes-release-calendar)** for upcoming End of Community Support and End of Platform Support dates
+3. **Configure a [Planned Maintenance Window](https://learn.microsoft.com/en-us/azure/aks/planned-maintenance)** to control when upgrades occur
+4. **Consider enabling auto-upgrade** (`stable` or `rapid` channel) to stay current automatically
+
+For detailed documentation on the "Always Supported" policy, see [link].
 
 ---
 
@@ -210,7 +257,7 @@ This feature is implemented in two distinct phases:
 │  • No tier transitions: Community → Community, LTS → LTS (no surprise billing)│
 │  • "None" channel retained—customers get manual control until EOL           │
 │  • "Patch" channel does NOT cross minor versions—platform takes over at EOL │
-│  • lastUpgradeSource field shows "System" after forced upgrade              │
+│  • Activity logs capture all upgrade actions (User vs System initiated)     │
 │  • Platform Support = 60-day grace period before forced upgrade             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -225,19 +272,18 @@ Three options were evaluated for implementing steady state enforcement:
 |--------|-------------|------|------|
 | **Option 1:** Change `none` channel behavior | Keep the `none` enum value but change its behavior to allow platform-driven upgrades at EOL. | No API breaking change. Simple to implement. | Confusing for customers. `none` no longer means "no upgrades." Documentation mismatch. |
 | **Option 2:** Deprecate `none`, introduce `platform-forced` channel | Remove `none` and add a new channel value that explicitly signals platform-controlled upgrades. | Clear intent for customers. | Formal API breaking change process required. Customer migration effort. |
-| **Option 3 (Recommended):** Retain `none`, add read-only `lastUpgradeSource` field next to `kubernetesVersion` | Keep `none` channel for customers who want manual control (e.g., those falling back from `stable`). Add a new read-only property in `managedClusterProperties` (outside `autoUpgradeProfile`, next to `kubernetesVersion`): `lastUpgradeSource` with enum values `User` or `System`. | Clear separation: Channels represent customer intent (including explicit opt-out via `none`). Platform behavior is explicit and read-only. No breaking change for `none` users. Property location makes it clear this describes cluster state, not upgrade configuration. Re-uses terminology already established in AKS. | Requires clear documentation that `none` still results in system-driven upgrade at EOL. |
+| **Option 3 (Recommended):** Retain `none`, rely on Activity logs for audit | Keep `none` channel for customers who want manual control (e.g., those falling back from `stable`). Use existing Activity logs to capture whether upgrades were initiated by `User` or `System`. Activity logs provide 90-day retention. | Clear separation: Channels represent customer intent (including explicit opt-out via `none`). No new API surface required. Leverages existing Azure audit infrastructure with 90-day retention. No breaking change for `none` users. | Requires clear documentation that `none` still results in system-driven upgrade at EOL. |
 
 
-**Recommendation: Option 3 — Retain `none`, add read-only `lastUpgradeSource` field next to `kubernetesVersion`**
+**Recommendation: Option 3 — Retain `none`, rely on Activity logs for audit**
 
 This option provides the clearest customer experience:
 - **Auto-upgrade channels** (`none`, `patch`, `stable`, `rapid`) represent **customer intent**—they indicate the customer's preference for how upgrades should be handled under normal circumstances.
 - **`none` channel is retained:** Customers who want full manual control can continue to use `none`. This is valuable for customers who fall back from `stable` or `rapid` to manage upgrades themselves.
 - **Clusters without an `autoUpgradeProfile` or with `upgradeChannel: none`:** These clusters are subject to platform-driven upgrades at EOL. The platform will force-upgrade community clusters to the next supported community version, and LTS clusters to the next LTS version.
-- **`lastUpgradeSource` property** (read-only, located next to `kubernetesVersion` in `managedClusterProperties`) indicates **how the cluster reached its current version**. This field is **computed dynamically** based on cluster history—it is not a persistent setting and not part of `autoUpgradeProfile`.
-- Values: `User` (customer performed the upgrade) or `System` (platform forced the upgrade).
-- When the platform forces an upgrade at EOL, `lastUpgradeSource` becomes `System`, giving customers visibility into the platform action taken.
-- Clear documentation and portal UX communicate that clusters without an `autoUpgradeProfile`, or with `upgradeChannel` set to `none` or `patch`, will receive platform-driven upgrades at EOL. The `lastUpgradeSource` field makes this behavior explicit and observable.
+- **Activity logs** capture whether upgrades were initiated by `User` or `System`, with 90-day retention. This leverages existing Azure audit infrastructure without requiring additional API surface.
+- When the platform forces an upgrade at EOL, Activity logs record the action with initiator `System`, giving customers visibility into the platform action taken.
+- Clear documentation and portal UX communicate that clusters without an `autoUpgradeProfile`, or with `upgradeChannel` set to `none` or `patch`, will receive platform-driven upgrades at EOL. Activity logs make this behavior explicit and auditable.
 
 #### Special Case: `patch` Channel at EOL
 
@@ -246,7 +292,7 @@ This option provides the clearest customer experience:
 **Behavior at EOL:**
 1. **Notification:** Customers on `patch` channel receive explicit warnings that their minor version is approaching EOL and `patch` channel will not save them.
 2. **Customer Action Window:** Customer can switch to `stable` or `rapid` channel, or perform a manual upgrade to a supported version.
-3. **Platform Takeover:** If the customer takes no action by EOL, the cluster enters a 60-day platform support grace period, then the platform force-upgrades the cluster to the next supported version within the same tier (community → next community, LTS → next LTS). After the upgrade completes, `lastUpgradeSource` will show `System`.
+3. **Platform Takeover:** If the customer takes no action by EOL, the cluster enters a 60-day platform support grace period, then the platform force-upgrades the cluster to the next supported version within the same tier (community → next community, LTS → next LTS). After the upgrade completes, Activity logs will show the action was initiated by `System`.
 4. **Channel Preserved:** After the forced upgrade, the cluster's `upgradeChannel` remains `patch`. The platform only intervened for the EOL event; ongoing behavior reverts to customer-driven patch upgrades.
 
 **Rationale:** Customers on `patch` explicitly chose patch-only behavior, meaning they accept responsibility for minor version upgrades. If they do not act, platform-driven upgrade to the next supported version within their tier is a safe fallback that keeps them supported without surprise billing changes.
@@ -275,7 +321,7 @@ This option provides the clearest customer experience:
 
 | Change | Impact | Mitigation |
 |--------|--------|------------|
-| **Retain `none` channel, add read-only `lastUpgradeSource` field** | Customers using `none` can continue to use it for manual control. Platform behavior at EOL is now explicit via the `lastUpgradeSource` field (located next to `kubernetesVersion`). Customers must understand that `none` still results in platform-driven upgrade at EOL. | Clear documentation that `none` channel clusters will receive platform-driven upgrades at EOL. `lastUpgradeSource` field makes this behavior explicit and observable in API/Portal. |
+| **Retain `none` channel, rely on Activity logs for audit** | Customers using `none` can continue to use it for manual control. Platform behavior at EOL is auditable via Activity logs (90-day retention). Customers must understand that `none` still results in platform-driven upgrade at EOL. | Clear documentation that `none` channel clusters will receive platform-driven upgrades at EOL. Activity logs make this behavior explicit and auditable. |
 | **Forced upgrades at EOL** | Customers who previously remained on unsupported versions will experience mandatory upgrades. Forced upgrades will push through PDB blocks (using [force upgrade with bypass PDB](https://learn.microsoft.com/en-us/azure/aks/upgrade-options#option-1-force-upgrade-bypass-pdb) after drain timeout) and handle API deprecations. | Multi-month advance warning. Upgrades respect maintenance windows when configured. |
 
 ---
@@ -340,7 +386,6 @@ the following guidance from the [Azure Pricing Principles](https://microsoft.sha
 - **`patch` Channel Warning:** "This cluster uses the `patch` channel, which only upgrades within the same minor version. Your minor version X.XX reaches end-of-support on [Date]. Switch to `stable`/`rapid` or upgrade manually, or AKS will upgrade automatically."
 - **Post-Action Banner:** "This cluster was upgraded to X.XX by AKS on [Date]. View details in the [Activity Log]."
 - **Status Indicator:** `Support Status: Supported | Approaching EOL | Platform Upgrade Scheduled`
-- Display `lastUpgradeSource` status when `System`.
 
 **Activity Log Integration:**
 - All platform-driven upgrades are logged as ARM activity log events.
@@ -369,18 +414,16 @@ the following guidance from the [Azure Pricing Principles](https://microsoft.sha
 **Kubernetes Hub (Fleet View):**
 - Dashboard: "X clusters approaching EOL in next 30/60/90 days"
 - Filter: "Show clusters requiring action"
-- Indicator for clusters where `lastUpgradeSource = System`
-- Column: "Last Platform Action" showing recent auto-upgrades/conversions
+- Column: "Last Platform Action" showing recent auto-upgrades/conversions (sourced from Activity logs)
 
 ### API
 
-**New read-only property in `managedClusterProperties` (next to `kubernetesVersion`):**
+**API Response (no additional fields required):**
 
 ```json
 {
     "properties": {
         "kubernetesVersion": "1.30.0",
-        "lastUpgradeSource": "User",  // Read-only. Enum: User | System
         "autoUpgradeProfile": {
             "upgradeChannel": "none",
             "nodeOSUpgradeChannel": "NodeImage"
@@ -389,30 +432,34 @@ the following guidance from the [Azure Pricing Principles](https://microsoft.sha
 }
 ```
 
-**`lastUpgradeSource` field:**
-- **Location:** `managedClusterProperties` (outside `autoUpgradeProfile`, next to `kubernetesVersion`)
-- **Type:** Read-only enum (`User` | `System`)
-- **Purpose:** Indicates how the cluster reached its current `kubernetesVersion`.
-- `User`: The last upgrade was initiated by the customer (via API, CLI, Portal, or auto-upgrade channel).
-- `System`: The last upgrade was forced by the platform due to EOL policy enforcement.
+**Audit via Activity Logs:**
+- **Location:** Azure Activity Log (accessible via Portal, CLI, or `az monitor activity-log list`)
+- **Retention:** 90 days (ample for audit purposes)
+- **Purpose:** Captures who initiated each upgrade action.
+- `User`: The upgrade was initiated by the customer (via API, CLI, Portal, or auto-upgrade channel).
+- `System`: The upgrade was forced by the platform due to EOL policy enforcement.
 
-**Note:** This field reflects **historical state** (how the cluster reached its current version), not **future intent**. It provides audit trail and visibility into platform actions.
+**Note:** Activity logs provide a complete audit trail of upgrade actions, eliminating the need for additional API surface.
 
 **`none` channel behavior:**
 - `none` channel is retained for customers who want manual control (e.g., those falling back from `stable`).
 - Clear documentation and portal UX communicate that even `none` channel clusters will receive platform-driven upgrades at EOL.
-- The `lastUpgradeSource` field makes platform actions explicit and observable.
+- Activity logs make platform actions explicit and auditable.
 
 ### CLI Experience
 
-**New output in `az aks show`:**
+**CLI output for `az aks show`:**
 ```
 Kubernetes Version: 1.30.0
-Last Upgrade Source: User   <-- NEW (next to kubernetesVersion)
 
 Auto Upgrade Profile:
     Upgrade Channel: none
     Node OS Upgrade Channel: NodeImage
+```
+
+**To check upgrade history and initiator, use Activity logs:**
+```
+az monitor activity-log list --resource-group <rg> --resource-provider Microsoft.ContainerService
 ```
 
 
@@ -453,8 +500,8 @@ Auto Upgrade Profile:
 | 2 | System must send notifications at T-6, T-3, and T-1 months before forced upgrade. | P0 |
 | 3 | Forced upgrades must respect customer-configured maintenance windows. If no window is configured, platform uses system convenience timing (platform-determined, not a specific default like weekends). | P0 |
 | 4 | Forced upgrades must use the [Force Upgrade (Bypass PDB)](https://learn.microsoft.com/en-us/azure/aks/upgrade-options#option-1-force-upgrade-bypass-pdb) method after drain timeout. Platform will use exponential backoff retry strategy (GKE-style, no fixed cap) until the cluster is upgraded; if consistently failing, cluster is flagged and customers alerted. | P0 |
-| 5 | API must expose `lastUpgradeSource` read-only property in `managedClusterProperties` (next to `kubernetesVersion`) indicating `User` or `System`. This field reflects how the cluster reached its current version. | P0 |
-| 6 | `none` auto-upgrade channel must be retained. Documentation must clearly explain that `none` channel clusters will receive platform-driven upgrades at EOL, made explicit via the `lastUpgradeSource` field after the upgrade. | P0 |
+| 5 | Activity logs must capture upgrade initiator (`User` or `System`) for all upgrade operations. Activity logs provide 90-day retention for audit purposes. | P0 |
+| 6 | `none` auto-upgrade channel must be retained. Documentation must clearly explain that `none` channel clusters will receive platform-driven upgrades at EOL, auditable via Activity logs. | P0 |
 | 7 | Clusters on `patch` channel must receive specific notification that `patch` does not cross minor versions and they must take action before EOL or accept platform-driven upgrade. | P0 |
 | 8 | Portal must display clear support status and forced upgrade schedule for each cluster. | P0 |
 | 9 | Kubernetes Hub must provide fleet-wide view of clusters approaching EOL. | P1 |
@@ -468,11 +515,11 @@ Auto Upgrade Profile:
 | 1 | E2E test: Cluster on unsupported version receives forced upgrade at scheduled time. | P0 |
 | 2 | E2E test: Forced upgrade respects maintenance window configuration. | P0 |
 | 3 | E2E test: Notification pipeline delivers emails at T-6, T-3, T-1 months. | P0 |
-| 4 | E2E test: `lastUpgradeSource` property correctly reflects platform vs. customer-driven upgrades. | P0 |
+| 4 | E2E test: Activity logs correctly capture platform vs. customer-driven upgrades with initiator information. | P0 |
 | 5 | E2E test: Forced upgrade succeeds without rollback in 99.5% of cases. Platform uses exponential backoff retry; persistently failing clusters are flagged and customers alerted. | P0 |
-| 6 | E2E test: Clusters with `none` channel at EOL receive forced upgrade and `lastUpgradeSource` shows `System` afterward. | P0 |
+| 6 | E2E test: Clusters with `none` channel at EOL receive forced upgrade and Activity logs show `System` as initiator. | P0 |
 | 7 | E2E test: Clusters on `patch` channel approaching EOL receive specific warning about minor version limitation. | P0 |
-| 8 | E2E test: Clusters on `patch` channel at EOL receive forced upgrade and `lastUpgradeSource` shows `System` afterward. | P0 |
+| 8 | E2E test: Clusters on `patch` channel at EOL receive forced upgrade and Activity logs show `System` as initiator. | P0 |
 | 9 | Load test: System can process forced upgrades for 10,000+ clusters in a single day. | P1 |
 
 ---
@@ -484,7 +531,7 @@ Auto Upgrade Profile:
 | 1 | **Notification pipeline integration** | Comms Manager team. Risk: Delivery failures. Mitigation: Multi-channel (email + portal + advisor). |
 | 2 | **Maintenance window enforcement** | AKS RP team. Risk: Edge cases where no window is configured. Mitigation: Use system convenience timing (platform-determined) if no window set—not a specific default like weekends. |
 | 3 | **Customer backlash** | Risk: Customers unhappy with forced upgrades. Mitigation: 12-month advance notice, clear communication, respect for maintenance windows. |
-| 4 | **Documentation clarity for `none` channel** | AKS Docs team. Risk: Customers on `none` may not understand platform will still upgrade at EOL. Mitigation: Clear documentation, portal UX, and `lastUpgradeSource` field visibility after platform action. |
+| 4 | **Documentation clarity for `none` channel** | AKS Docs team. Risk: Customers on `none` may not understand platform will still upgrade at EOL. Mitigation: Clear documentation, portal UX, and Activity log visibility after platform action. |
 | 5 | **Upgrade reliability** | AKS Upgrade team. Risk: Forced upgrades fail at higher rate than voluntary. Mitigation: Use same safe upgrade infrastructure (surge, health gates). |
 
 ---
