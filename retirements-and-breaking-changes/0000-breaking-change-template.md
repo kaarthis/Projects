@@ -57,9 +57,6 @@ _Guidance: You should add a Breaking Change notice to any AKS public documentati
 
 > [!IMPORTANT]
 > Starting on [January 12, 2027], AKS no longer supports [retiring feature name]. [Explain expected customer impact such as data loss, workload breakage, can no longer scale, etc.] To avoid disruption, we recommend migrating to [replacement feature, including link to migration guidance]. For more information on this retirement, see [AKS GitHub issue](add link to retirement GitHub issue) and [Azure Updates post](add link to retirement Azure Updates post). To stay informed on announcements and updates, follow the [AKS release notes](https://github.com/Azure/AKS/releases).
-> In this article, there are references to [Breaking Change Feature] that are being deprecated for AKS:
->
-> Starting on [Breaking Change DATE], AKS will no longer support [Breaking Change  NAME]. [Insert expected customer impact such as data loss, workload breakage, can no longer scale, etc.] Migrate to [Replacement Product, including link with migration guidance]. For more information on this breaking change, see [AKS Github Issues](ADD LINK TO YOUR BREAKING CHANGE GITHUB ISSUE).
 
 ### Release Notes Template 
 _Guidance: Provide example release notes that you will publish regarding this breaking change._

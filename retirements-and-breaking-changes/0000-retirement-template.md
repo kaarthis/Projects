@@ -90,7 +90,8 @@ _Note: The above schedule assumes a 3 year retirement timeframe. If you've gotte
 ## AKS Documentation Retirement Notice
 _Guidance: You should add a retirement notice to any AKS public documentation that uses the retiring feature. The recommended way to do this is to add a file to the "includes > retirement notices" section. See [content contributor guide](https://review.learn.microsoft.com/help/contribute/reusable-content-repo-how-to?branch=main&source=docs) for details._
 
-> [!CAUTION]
+> [!IMPORTANT]
+> Starting on [January 12, 2027], AKS no longer supports [retiring feature name]. [Explain expected customer impact such as data loss, workload breakage, can no longer scale, etc.] To avoid disruption, we recommend migrating to [replacement feature, including link to migration guidance]. For more information on this retirement, see [AKS GitHub issue](add link to retirement GitHub issue) and [Azure Updates post](add link to retirement Azure Updates post). To stay informed on announcements and updates, follow the [AKS release notes](https://github.com/Azure/AKS/releases).
 > In this article, there are references to [Retiring Feature] that are being deprecated for AKS:
 >
 > Starting on [RETIREMENT DATE], AKS will no longer support [RETIRING FEATURE NAME]. [Insert expected customer impact such as data loss, workload breakage, can no longer scale, etc.] Migrate to [Replacement Product, including link with migration guidance]. For more information on this retirement, see [AKS Github Issues](ADD LINK TO YOUR RETIREMENT GITHUB ISSUE).
