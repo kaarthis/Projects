@@ -88,7 +88,7 @@ _Guidance: Provide a schedule for when announcements and reminders will be sent 
 _Note: The above schedule assumes a 3 year retirement timeframe. If you've gotten an exception to retire your feature in a reduced timeframe, you'll need to adjust the above table accordingly._
 
 ## AKS Documentation Retirement Notice
-_Guidance: You should add a retirement notice to any AKS public documentation that uses the retiring feature. The recommended way to do this is to add a file to the "includes > retirement notices" section. See [content contributor guide](https://review.learn.microsoft.com/help/contribute/reusable-content-repo-how-to?branch=main&source=docs) for details._
+_Guidance: You should add a retirement notice to any AKS public documentation that uses the retiring feature. The recommended way to do this is to add a file to the "includes" section. See [content contributor guide](https://review.learn.microsoft.com/help/contribute/reusable-content-repo-how-to?branch=main&source=docs) for details._
 
 > [!IMPORTANT]
 > Starting on [January 12, 2027], AKS no longer supports [retiring feature name]. [Explain expected customer impact such as data loss, workload breakage, can no longer scale, etc.] To avoid disruption, we recommend migrating to [replacement feature, including link to migration guidance]. For more information on this retirement, see [AKS GitHub issue](add link to retirement GitHub issue) and [Azure Updates post](add link to retirement Azure Updates post). To stay informed on announcements and updates, follow the [AKS release notes](https://github.com/Azure/AKS/releases).
