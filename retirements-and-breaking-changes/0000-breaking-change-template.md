@@ -53,9 +53,10 @@ _Guidance: Provide a schedule for when announcements and reminders will be sent 
 _Note: The above schedule assumes a 90 day breaking change timeframe. If your scenario requires more than 90 days notice, you'll need to adjust accordingly. See [AKS Retirement Scenarios and Requirements](https://microsoft.sharepoint.com/:w:/t/APEXProgram/EWezmtaQICRNhgBqMPDdhdEBPnXHlL9R5AREijaOXAocjg?e=ijiFP6) or contact the Breaking Change Board for questions. Office hours at: [aka.ms/CPEXBreakingChangesProcess](https://aka.ms/CPEXBreakingChangesProcess) or contact [azbreakchangereview@microsoft.com](mailto:azbreakchangereview@microsoft.com). _
 
 ### AKS Documentation Notice
-_Guidance: You should add a Breaking Change notice to any AKS public documentation that uses the feature._
+_Guidance: You should add a Breaking Change notice to any AKS public documentation that uses the feature. The recommended way to do this is to add a file to the "includes > retirement notices" section. See [content contributor guide](https://review.learn.microsoft.com/help/contribute/reusable-content-repo-how-to?branch=main&source=docs) for details._
 
-> [!CAUTION]
+> [!IMPORTANT]
+> Starting on [January 12, 2027], AKS no longer supports [retiring feature name]. [Explain expected customer impact such as data loss, workload breakage, can no longer scale, etc.] To avoid disruption, we recommend migrating to [replacement feature, including link to migration guidance]. For more information on this retirement, see [AKS GitHub issue](add link to retirement GitHub issue) and [Azure Updates post](add link to retirement Azure Updates post). To stay informed on announcements and updates, follow the [AKS release notes](https://github.com/Azure/AKS/releases).
 > In this article, there are references to [Breaking Change Feature] that are being deprecated for AKS:
 >
 > Starting on [Breaking Change DATE], AKS will no longer support [Breaking Change  NAME]. [Insert expected customer impact such as data loss, workload breakage, can no longer scale, etc.] Migrate to [Replacement Product, including link with migration guidance]. For more information on this breaking change, see [AKS Github Issues](ADD LINK TO YOUR BREAKING CHANGE GITHUB ISSUE).
