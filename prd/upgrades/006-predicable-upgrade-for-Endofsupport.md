@@ -143,34 +143,42 @@ To avoid confusion, we define three key terms:
 
 **Exact Timing: When Will My Cluster Be Upgraded?**
 
+Refer to the [AKS Kubernetes Release Calendar](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#aks-kubernetes-release-calendar) for all version support dates. This calendar is automatically updated and serves as the authoritative source for version support timelines.
+
 - **On your version's End of Community Support date** (first AKS release in the EOL month per the [Release Calendar](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#aks-kubernetes-release-calendar)): Your cluster enters a 60-day Platform Support grace period. During this time, you can still upgrade manually.
 - **After the 60-day Platform Support period ends:** If you have not upgraded, AKS will automatically upgrade your cluster to the lowest supported version within your tier. The upgrade can occur **any time after the grace period ends** at a platform-determined time for your cluster. **If you have configured a maintenance window, it will always be honored.**
 
 We strongly recommend configuring a [Planned Maintenance Window](https://learn.microsoft.com/en-us/azure/aks/planned-maintenance) to ensure upgrades happen when you expect them.
 
-> **Note:** All dates are published in the [AKS Kubernetes Release Calendar](https://learn.microsoft.com/en-us/azure/aks/supported-kubernetes-versions?tabs=azure-cli#aks-kubernetes-release-calendar). Bookmark this page and check it regularly—it is continuously updated and serves as the authoritative source for version support timelines.
-
 **Two Phases**
 
-1. **Transition Phase (Now through June 2027):** If your cluster is currently on an unsupported version, you will receive notifications with specific dates. If you do not upgrade by **June 31, 2027**, AKS will automatically upgrade your cluster to the lowest supported version within your tier.
+1. **Transition Phase (Now through June 2027):** If your cluster is currently on an unsupported version, you will receive notifications with specific dates. **Where to find these notifications:**
+   - **Email** — sent to subscription owners and co-administrators (ensure your contact info is current in [Azure Portal > Subscriptions > Properties](https://portal.azure.com/#blade/Microsoft_Azure_Billing/SubscriptionsBlade))
+      - **Azure Portal** — in-context banners when viewing your AKS cluster
+   - **[Azure Advisor](https://portal.azure.com/#blade/Microsoft_Azure_Expert/AdvisorMenuBlade)** — proactive recommendations for your clusters
+   
+   If you do not upgrade by **June 30, 2027**, AKS will automatically upgrade your cluster to the lowest supported version within your tier.
 
-2. **Steady State (November 2027 onward):** Going forward, when any cluster's version reaches End of Community Support, the 60-day Platform Support grace period begins automatically. After Platform Support ends, AKS automatically upgrades the cluster:
+2. **Steady State (November 2027 onward):** Going forward, when any cluster's version reaches End of Community Support, the 60-day Platform Support grace period begins automatically. **You will be notified** via the same channels listed above (email to subscription admins, Portal banners, and Azure Advisor) at key milestones: when your version enters Platform Support, and again before the automatic upgrade occurs.
+
+   After Platform Support ends, AKS automatically upgrades the cluster:
    - **Community clusters** → upgraded to the **lowest supported community version**
    - **LTS clusters** → upgraded to the **lowest supported LTS version**
    - **Your tier is preserved**—community stays community, LTS stays LTS. No surprise billing changes.
 
 **For Customers Using `none` or `patch` Channels**
 
-| Channel | Behavior | After Platform Support Ends |
-|---------|----------|----------------------------|
-| **`none`** | Full manual control—no automatic upgrades during normal operation | Subject to automatic upgrade to lowest supported version in your tier |
-| **`patch`** | Automatic patch upgrades within the same minor version only (e.g., 1.30.1 → 1.30.2) | Subject to automatic upgrade to lowest supported version in your tier |
+- **`none` channel**: Full manual control over all upgrades. Use this when you want to manage every upgrade yourself and test thoroughly before applying changes.
 
-Both channels give you control under normal circumstances, but the **Always Supported policy applies to all clusters** after Platform Support ends.
+- **`patch` channel**: Automatic patch upgrades within the same minor version only (e.g., 1.35.1 → 1.35.2). Use this when you want security patches applied automatically but prefer to control minor version upgrades.
 
-**Recommended alternatives for predictable, fully automated pipelines:**
-- **[`stable` or `rapid` channels](https://learn.microsoft.com/en-us/azure/aks/auto-upgrade-cluster)** + **[Planned Maintenance Windows](https://learn.microsoft.com/en-us/azure/aks/planned-maintenance)**: Automatic minor version upgrades on your schedule
-- **[Azure Kubernetes Fleet Manager](https://learn.microsoft.com/en-us/azure/kubernetes-fleet/)**: Orchestrated upgrades across multiple clusters with staging and gates
+Both channels follow the Always Supported policy: when your version reaches End of Community Support, your cluster enters Platform Support. After the 60-day Platform Support period ends, AKS will automatically upgrade your cluster's minor version to the lowest supported version within your tier.
+
+**Want predictable, recurring minor version upgrades?**
+
+If you'd like your clusters to upgrade minor versions in a recurring and predictable fashion, consider:
+- **[`stable` or `rapid` channels](https://learn.microsoft.com/en-us/azure/aks/auto-upgrade-cluster)** with **[Planned Maintenance Windows](https://learn.microsoft.com/en-us/azure/aks/planned-maintenance)**: Automatic minor version upgrades on your schedule
+- **[Azure Kubernetes Fleet Manager](https://learn.microsoft.com/en-us/azure/kubernetes-fleet/)**: Establish a consistent upgrade pipeline with staging environments and upgrade gates across multiple clusters
 
 **Option for Extended Support Without Immediate Upgrades**
 
@@ -189,9 +197,7 @@ AKS provides advance notice through multiple channels so you can plan ahead:
 |---------|-------------|
 | **Azure Portal Banner** | In-context notification when viewing your AKS cluster |
 | **Email to Subscription Admins** | Sent to subscription owners and co-administrators |
-| **Azure Advisor Recommendations** | Proactive guidance in the Advisor blade |
 | **AKS Communications Manager** | For customers enrolled in AKS Communications |
-| **Azure Service Health** | Platform-level notifications for your subscription |
 | **[AKS Release Tracker](https://releases.aks.azure.com/)** | Track upcoming releases and version support status |
 | **[AKS Release Notes](https://learn.microsoft.com/en-us/azure/aks/release-notes)** | Detailed notes on each release including EOL announcements |
 
