@@ -172,7 +172,7 @@ We strongly recommend configuring a [Planned Maintenance Window](https://learn.m
 
 - **`patch` channel**: Automatic patch upgrades within the same minor version only (e.g., 1.35.1 → 1.35.2). Use this when you want security patches applied automatically but prefer to control minor version upgrades.
 
-Both channels follow the Always Supported policy: when your version reaches End of Community Support, your cluster enters Platform Support. After the 60-day Platform Support period ends, AKS will automatically upgrade your cluster's minor version to the lowest supported version within your tier.
+Both channels follow the Always Supported policy: when your version reaches End of Community Support, your cluster enters Platform Support. After the 60-day Platform Support period ends, AKS will automatically upgrade your cluster's minor version to the lowest supported version within your tier—**LTS clusters are upgraded to the lowest supported LTS version, and community clusters are upgraded to the lowest supported community version**. Your tier is always preserved; no surprise billing changes.
 
 **Want predictable, recurring minor version upgrades?**
 
