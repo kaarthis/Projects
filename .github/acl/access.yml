@@ -5,11 +5,13 @@ resource: repository
 where:
 configuration:
   manageAccess:
-    - member: jpalma
+    - member: jpalma_microsoft
       role: Maintain
-    - member: jpang
+    - member: shasb_microsoft
       role: Maintain
-    - member: qike
+    - member: jpang_microsoft
+      role: Maintain
+    - member: qike_microsoft
       role: Maintain
     # Azure Container Service - Approver
     - team: rrd-acsappr-25810
