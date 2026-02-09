@@ -13,6 +13,8 @@ configuration:
       role: Maintain
     - member: qike_microsoft
       role: Maintain
+    - member: matthchr_microsoft
+      role: Maintain
     # Azure Container Service - Approver
     - team: rrd-acsappr-25810
       role: Maintain
