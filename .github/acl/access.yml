@@ -26,6 +26,17 @@ configuration:
     # Qi Ke's Organization FTE
     - team: QiKeOrgFTE
       role: Write
+    # API Approvers
+    - team: aks-api-reviewers-eng
+      role: Write
+    - team: aks-api-reviewers-pms
+      role: Write
+    # PRD approvers
+    - team: aks-prd-reviewers
+      role: Write
+    # Design approvers
+    - team: aks-design-reviewers
+      role: Write
     # Azure Container Service - AKS-RO
     - team: azurecontainerservice-aks-ro-eb62
       role: Read
