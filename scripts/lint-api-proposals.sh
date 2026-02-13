@@ -45,6 +45,12 @@ for file in "$@"; do
         continue
     fi
 
+    # Skip README files — they are not proposals.
+    if [[ "$basename" == "README.md" ]]; then
+        echo "SKIP: $file (README)"
+        continue
+    fi
+
     errors=""
 
     # Check 1: HTML comments must be removed before submission.
