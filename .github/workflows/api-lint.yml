@@ -1,0 +1,37 @@
+name: api-lint
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/**'
+
+jobs:
+  api-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get changed API files
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: shell
+          filters: |
+            api:
+              - 'api/**/*.md'
+
+      - name: Run API lint
+        if: steps.changed.outputs.api == 'true'
+        working-directory: api
+        run: |
+          # Convert paths to be relative to the api/ directory
+          changed_files=""
+          for f in ${{ steps.changed.outputs.api_files }}; do
+            rel_path="${f#api/}"
+            changed_files="${changed_files} ${rel_path}"
+          done
+
+          echo "Linting changed files:${changed_files}"
+          make lint TARGET="${changed_files}"

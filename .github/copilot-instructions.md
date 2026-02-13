@@ -30,7 +30,42 @@ Use `../prd/0000-prd-template.md` as a template.
 
 ---
 
-## 📚 Cross-Referencing
+## 🔌 Writing API Proposals
+
+For API authoring, use the prompt files in `.github/prompts/`:
+
+| Prompt File                     | Purpose                                                |
+| ------------------------------- | ------------------------------------------------------ |
+| `api-proposal.prompt.md`        | Generate a complete API proposal from requirements     |
+| `api-review-feedback.prompt.md` | Review an API proposal and provide structured feedback |
+| `api-prd-to-proposal.prompt.md` | Convert a PRD into an API proposal                     |
+| `api-cli-generator.prompt.md`   | Generate Azure CLI commands for an API                 |
+
+**API Specification Format:** TypeSpec (not Swagger/JSON)
+
+API proposals now use [TypeSpec](https://typespec.io/) as the specification language, following the [Azure REST API development process](https://github.com/Azure/azure-rest-api-specs/blob/main/documentation/typespec-rest-api-dev-process.md).
+**Expected Output Format:**
+
+Use `../api/0000-api-template.md` as a template.
+
+---
+
+## � Automated API Code Review
+
+This repository includes path-specific custom instructions for **GitHub Copilot code review** on PRs targeting the `api/` folder.
+
+**Location:** `.github/instructions/api-review.instructions.md`
+
+**What it does:**
+
+- Automatically provides detailed API **design and proposal** review feedback when reviewing PRs that modify files in `api/`
+- Uses severity indicators: ✅ DO, ✔️ YOU MAY, ⚠️ YOU SHOULD NOT, ⛔ DO NOT
+- Checks for Azure API Guidelines compliance, TypeSpec quality, AKS patterns, and security issues
+- Categorizes feedback as 🔴 Critical, 🟡 Recommendation, or ❓ Question
+
+---
+
+## �📚 Cross-Referencing
 
 When referencing other documents:
 
@@ -47,4 +82,3 @@ Before finalizing:
 - Is the tone professional and clear?
 - Are all acronyms defined?
 - Did you avoid speculative implementation details unless under a dedicated section?
-
