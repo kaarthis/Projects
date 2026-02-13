@@ -6,7 +6,7 @@ See also: [Feature Development Process in Collaboration With API Release](https:
 
 - **RP Cutoff** — Deadline is when the code must be merged into repo [aks-rp](https://dev.azure.com/msazure/CloudNativeCompute/_git/aks-rp).
   Cannot give a clear date as the release cycle of official release is not fixed. People can check the email with the title
-  `RE: AKS RP Release Update v20204xxxx` to see the progress of the current official release, it will also provide predictions on the next release.
+  `RE: AKS RP Release Update v2024xxxx` to see the progress of the current official release, it will also provide predictions on the next release.
 - **Swagger Cutoff** — Deadline is when the Swagger changes must be merged into the dev branch.
 - **CLI Cutoff** — Deadline when CLI changes must be merged into azure-cli.
 

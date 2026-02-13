@@ -79,9 +79,9 @@ For each CLI command, provide:
 
 **Syntax**:
 ```bash
-az aks [command] --name
-                 --resource-group
-                 [--optional-param]
+az aks [command] --name <cluster-name>
+                 --resource-group <resource-group>
+                 [--optional-param <value>]
 ```
 
 **Parameters**:

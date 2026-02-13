@@ -27,8 +27,12 @@ for file in "$@"; do
     dirpart=$(dirname "$file")
 
     # Check 0: 0000-* prefix files are only allowed in the top-level api/ directory.
-    if [[ "$basename" == 0000-* && "$dirpart" != "." ]]; then
-        echo "FAIL: $file"
+    # Determine the absolute api/ directory based on the script location so that
+    # behavior is independent of the caller's current working directory.
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    api_dir="$(cd "$script_dir/../api" && pwd)"
+    normalized_dir=$(cd "$dirpart" 2>/dev/null && pwd) || normalized_dir="$dirpart"
+    if [[ "$basename" == 0000-* && "$normalized_dir" != "$api_dir" ]]; then
         printf "  ERROR: Files with a 0000- prefix are not allowed in subdirectories. Move to the top-level api/ folder or rename the file.\n"
         echo ""
         failed=1

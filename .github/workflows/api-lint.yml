@@ -28,10 +28,11 @@ jobs:
         run: |
           # Convert paths to be relative to the api/ directory
           changed_files=""
-          for f in ${{ steps.changed.outputs.api_files }}; do
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
             rel_path="${f#api/}"
             changed_files="${changed_files} ${rel_path}"
-          done
+          done <<< "$(echo "${{ steps.changed.outputs.api_files }}" | tr ' ' '\n')"
 
           echo "Linting changed files:${changed_files}"
           make lint TARGET="${changed_files}"

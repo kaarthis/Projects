@@ -50,7 +50,7 @@ Use `../api/0000-api-template.md` as a template.
 
 ---
 
-## � Automated API Code Review
+## 🤖 Automated API Code Review
 
 This repository includes path-specific custom instructions for **GitHub Copilot code review** on PRs targeting the `api/` folder.
 
@@ -65,7 +65,7 @@ This repository includes path-specific custom instructions for **GitHub Copilot 
 
 ---
 
-## �📚 Cross-Referencing
+## 📚 Cross-Referencing
 
 When referencing other documents:
 

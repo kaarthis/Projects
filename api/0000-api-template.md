@@ -1,7 +1,9 @@
 # <REPLACE_WITH_TITLE>
 
-**Author(s)**:  <REPLACE_WITH_ALIAS>
+**Author(s)**:  <REPLACE_WITH_GH_ENTERPRISE_ALIAS>
+
 **PRD**:        <REPLACE_WITH_LINK>
+
 **Design doc:** <REPLACE_WITH_LINK>
 
 ## Required Pre-Requisites
@@ -57,7 +59,7 @@ model Feature is ProxyResource<FeatureProperties> {
 interface Features {
   get is ArmResourceRead<Feature>;
   createOrUpdate is ArmResourceCreateOrReplaceAsync<Feature>;
-  delete is ArmResourceDeleteSync<Feature>;
+  delete is ArmResourceDeleteAsync<Feature>;
   listByParent is ArmResourceListByParent<Feature>;
 }
 ```

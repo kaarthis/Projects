@@ -5,10 +5,10 @@ Before you do this, make sure you understand the
 
 ## Steps
 
-0. **Understand best practices:** Read the [AKS API Best Practices](.github/instructions/api-review.instructions.md).
+0. **Understand best practices:** Read the [AKS API Best Practices](../.github/instructions/api-review.instructions.md).
 
 1. **API review:** Go through the
-   [API Review Process](api/README.md) and get approvals. As part of this process you should have determined which API version your feature is going into.
+   [API Review Process](README.md) and get approvals. As part of this process you should have determined which API version your feature is going into.
 
 2. **Design doc review:** Ensure that your design document is reviewed and approved before starting on backend implementation.
 
