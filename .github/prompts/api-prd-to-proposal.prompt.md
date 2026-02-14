@@ -111,7 +111,12 @@ model FeatureProperties {
 
 /** Resource description */
 model Feature is ProxyResource<FeatureProperties> {
-  ...ResourceNameParameter<Feature>;
+  ...ResourceNameParameter<
+    Resource = Feature,
+    KeyName = "resourceName",
+    SegmentName = "myFeatures",
+    NamePattern = "^[a-zA-Z0-9]$|^[a-zA-Z0-9][-_a-zA-Z0-9]{0,61}[a-zA-Z0-9]$"
+  >;
 }
 
 @armResourceOperations

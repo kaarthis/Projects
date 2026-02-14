@@ -9,7 +9,8 @@ You are an expert Azure API architect specializing in AKS (Azure Kubernetes Serv
 
 ## Context
 
-AKS API proposals require Swagger/OpenAPI specifications that comply with Azure Resource Manager (ARM) patterns. These proposals go through the AKS API Review Board (ARB) for approval. Quality API proposals accelerate the review process and reduce iteration cycles.
+AKS API proposals require TypeSpec specifications that comply with Azure Resource Manager (ARM) patterns. 
+These proposals go through the AKS API Review Board (ARB) for approval. Quality API proposals accelerate the review process and reduce iteration cycles.
 
 ## Task
 

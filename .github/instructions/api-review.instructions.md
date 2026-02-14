@@ -98,8 +98,10 @@ Verify compliance with:
 
 ### Properties and Fields
 
-- ✅ DO mark computed/server-owned (read-only) properties with `@visibility("read")` (e.g., `provisioningState`)
-- ✅ DO mark optional properties with `?` in TypeSpec. In ManagedCluster and AgentPool, almost all properties should be optional due to legacy partial PUT behavior.
+- ✅ DO mark computed/server-owned (read-only) properties with `@visibility(Lifecycle.Read)` (e.g., `provisioningState`)
+- ✅ DO mark optional properties with `?` in TypeSpec. In ManagedCluster and AgentPool, almost all properties should be optional 
+    due to legacy partial PUT behavior. If the proposal is adding a new resource (not updating ManagedCluster or AgentPool), required properties should be 
+    marked as non-optional (no `?`).
 - ✅ DO add validation decorators where applicable: `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`
 - ✅ DO use `Azure.ResourceManager.armResourceIdentifier` for fields that contain ARM resource IDs
 
