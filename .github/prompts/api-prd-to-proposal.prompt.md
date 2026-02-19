@@ -82,7 +82,7 @@ Determine:
 Generate TypeSpec specification following Azure ARM patterns. TypeSpec is the standard for Azure API specifications going forward.
 
 **Key Requirements:**
-- Use `Azure.ResourceManager.armResourceIdentifier` for properties containing ARM resource IDs
+- Use `Azure.Core.armResourceIdentifier` for properties containing ARM resource IDs
 - Add doc comments (`/** */`) to all models and properties
 - Include `aka.ms/aks/<feature>` documentation links in descriptions
 
@@ -94,10 +94,11 @@ Generate TypeSpec specification following Azure ARM patterns. TypeSpec is the st
 **TypeSpec Structure:**
 ```typespec
 import "@azure-tools/typespec-azure-resource-manager";
+import "@azure-tools/typespec-azure-core";
 
 using TypeSpec.Http;
 using TypeSpec.Rest;
-using Azure.ResourceManager;
+using Azure.Core;
 
 @armProviderNamespace
 @service({ title: "Service Name" })

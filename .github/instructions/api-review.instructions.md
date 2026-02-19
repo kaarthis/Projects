@@ -99,22 +99,31 @@ Verify compliance with:
 ### Properties and Fields
 
 - ✅ DO mark computed/server-owned (read-only) properties with `@visibility(Lifecycle.Read)` (e.g., `provisioningState`)
-- ✅ DO mark optional properties with `?` in TypeSpec. In ManagedCluster and AgentPool, almost all properties should be optional 
-    due to legacy partial PUT behavior. If the proposal is adding a new resource (not updating ManagedCluster or AgentPool), required properties should be 
-    marked as non-optional (no `?`).
+- ✅ DO mark properties that are optional with `?` in TypeSpec.
+- ⛔ DO NOT mark properties as required (no `?`) if the property is a member of ManagedCluster or AgentPool. These types have "PUTCH" handling where properties are never truly required on PUT.
 - ✅ DO add validation decorators where applicable: `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`
-- ✅ DO use `Azure.ResourceManager.armResourceIdentifier` for fields that contain ARM resource IDs
+- ✅ DO use `Azure.Core.armResourceIdentifier` for fields that contain ARM resource IDs.
+- ✅ DO specify `type` and/or `scopes` for all `Azure.Core.armResourceIdentifier` fields if you know them.
+  See the [armResourceIdentifier documentation](https://azure.github.io/typespec-azure/docs/libraries/azure-core/reference/data-types/#Azure.Core.armResourceIdentifier) for details.
 
 Example of ARM resource ID field:
 ```typespec
+import "@azure-tools/typespec-azure-core";
 import "@azure-tools/typespec-azure-resource-manager";
+
+using Azure.Core;
+using Azure.ResourceManager;
 
 model MyProperties {
   /** The resource ID of the subnet. */
-  subnetId?: Azure.ResourceManager.armResourceIdentifier;
+  subnetId?: Azure.Core.armResourceIdentifier<[
+    {
+      type: "Microsoft.Network/virtualNetworks/subnets";
+    }
+  ]>;
   
-  /** The resource ID of the user-assigned identity. */
-  userAssignedIdentityResourceId?: Azure.ResourceManager.armResourceIdentifier;
+  /** The source resource ID */
+  sourceResourceId?: Azure.Core.armResourceIdentifier;
 }
 ```
 
@@ -122,7 +131,7 @@ model MyProperties {
 
 - ✅ DO use `ArmResourceRead<T>` for GET operations
 - ✅ DO use `ArmResourceCreateOrReplaceAsync<T>` for async PUT operations
-- ✅ DO use `ArmResourceDeleteSync<T>` or `ArmResourceDeleteAsync<T>` for DELETE
+- ✅ DO use `ArmResourceDeleteSync<T>` or `ArmResourceDeleteWithoutOkAsync<T>` for DELETE.
 - ✅ DO use `ArmResourceListByParent<T>` for list operations
 - ✅ DO add `@armResourceOperations` decorator on interface
 
