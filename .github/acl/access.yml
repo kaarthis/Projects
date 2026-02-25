@@ -44,3 +44,10 @@ configuration:
       role: Read
     - team: RAM_3c9edc39-6b05-46b7-bf9f-ff48b5e0e870
       role: Read
+    # Networking (Chandan's team, as well as Neha's + Miguel's)
+    - team: caggart
+      role: Read
+    - team: miguelgo_team
+      role: Read
+    - team: neaggarwt
+      role: Read

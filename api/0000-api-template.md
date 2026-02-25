@@ -27,7 +27,7 @@ Include a TypeSpec snippet describing the REST API change you're going to make. 
 **References:**
 - [TypeSpec Azure Development Guide](https://github.com/Azure/azure-rest-api-specs/blob/main/documentation/typespec-rest-api-dev-process.md)
 - [TypeSpec Azure ARM Tutorial](https://azure.github.io/typespec-azure/docs/getstarted/azure-resource-manager/step01)
-- [AKS TypeSpec Examples](https://github.com/Azure/azure-rest-api-specs/tree/main/specification/containerservice/ContainerService.Management)
+- [AKS TypeSpec Examples](https://github.com/Azure/azure-rest-api-specs/tree/main/specification/containerservice/resource-manager/Microsoft.ContainerService/aks)
 - https://github.com/microsoft/api-guidelines/blob/vNext/azure/Guidelines.md
 - https://azure.github.io/typespec-azure/docs/intro/
 - https://armwiki.azurewebsites.net/api_contracts/guidelines/rpc.html
@@ -69,5 +69,11 @@ interface Features {
 }
 ```
 -->
+
+## Sample JSON
+
+```
+<REPLACE_WITH_1-2_JSON_SAMPLES>
+```
 
 ## CLI Proposal (optional)

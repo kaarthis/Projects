@@ -219,26 +219,20 @@ How to Evaluate & Examples:
 
 -----------------------------------------------
 
-<!-----------------------[  Access  ]-----------------------<recommended> section below------------------>
 ## Access
 
-<!-- 
-INSTRUCTIONS:
-- Please use this section to reduce the all-too-common friction & pain of getting read access and role-based permissions 
-  to repos inside Microsoft. Please cover (a) Gaining a role with read, write, other permissions. (b) sharing a link to 
-  this repository such that people who are not members of the organization can access it.
-- If the repository is set to internalVisibility, you may also want to refer to the "Sharing a Link to this Repository" sub-section 
-of the [README-Template instructions](https://aka.ms/StartRight/README-Template/Instructions#sharing-a-link-to-this-repository) so new GitHub EMU users know to get 1ES-Enterprise-Visibility MyAccess group access and therefore will have read rights to any repo set to internalVisibility.
+Access to this repo is controlled via AAD mirrored to GitHub groups. See [https://github.com/azure-management-and-platforms/aks-handbook/blob/main/.github/acl/access.yml]
+for the groups that have access to the repo.
 
-How to Evaluate & Examples:
-  - https://aka.ms/StartRight/README-Template/Instructions#how-to-share-an-accessible-link-to-this-repository
--->
+Access levels generally mean:
 
+- `Read`: Can fork the repo and send PRs.
+- `Write`: Can push directly to branches in the repo (not main, it's protected).
 
-<!---- [TODO]  CONTENT GOES BELOW ------->
+**Make sure you're attempting to clone/push with your enterprise GitHub credentials**. 
 
-<!------====-- CONTENT GOES ABOVE ------->
-
+* If you're using a PAT, make sure it's set to "all repositories".
+* If you're using [GCM](https://github.com/git-ecosystem/git-credential-manager) it _should_ just work.
 
 <!-----------------------[  Contributing  ]-----------------<recommended> section below------------------>
 ## Contributing

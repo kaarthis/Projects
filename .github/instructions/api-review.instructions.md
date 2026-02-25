@@ -175,6 +175,7 @@ Ensure the proposal includes:
 - ✅ Link to Design doc (if applicable)
 - ✅ Clear problem statement and rationale
 - ✅ Complete TypeSpec specification
+- ✅ 1 or 2 sample JSON snippets demonstrating the API in use
 - ✅ Mapping from PRD requirements to API implementation (if PRD exists)
 - ✔️ CLI proposal (if user-facing feature)
 - ✔️ Open questions or areas needing discussion
