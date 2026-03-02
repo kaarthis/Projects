@@ -1,0 +1,49 @@
+{
+  "parameters": {
+    "api-version": "2025-10-02-preview",
+    "configurationName": "default",
+    "parameters": {
+      "properties": {
+        "mode": "Managed",
+        "notification": {
+          "actionGroupId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg1/providers/Microsoft.Insights/actionGroups/myActionGroup"
+        }
+      }
+    },
+    "resourceGroupName": "rg1",
+    "resourceName": "clustername1",
+    "subscriptionId": "00000000-0000-0000-0000-000000000000"
+  },
+  "responses": {
+    "200": {
+      "body": {
+        "name": "default",
+        "type": "Microsoft.ContainerService/managedClusters/alertConfigurations",
+        "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg1/providers/Microsoft.ContainerService/managedClusters/clustername1/alertConfigurations/default",
+        "properties": {
+          "mode": "Managed",
+          "notification": {
+            "actionGroupId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg1/providers/Microsoft.Insights/actionGroups/myActionGroup"
+          },
+          "provisioningState": "Succeeded"
+        }
+      }
+    },
+    "201": {
+      "body": {
+        "name": "default",
+        "type": "Microsoft.ContainerService/managedClusters/alertConfigurations",
+        "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg1/providers/Microsoft.ContainerService/managedClusters/clustername1/alertConfigurations/default",
+        "properties": {
+          "mode": "Managed",
+          "notification": {
+            "actionGroupId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg1/providers/Microsoft.Insights/actionGroups/myActionGroup"
+          },
+          "provisioningState": "Creating"
+        }
+      }
+    }
+  },
+  "operationId": "AlertConfigurations_CreateOrUpdate",
+  "title": "Create or Update Alert Configuration"
+}
