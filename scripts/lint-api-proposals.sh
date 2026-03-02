@@ -12,6 +12,8 @@
 #   1. No HTML comments (<!-- / -->) left in the document.
 #   2. No un-replaced template placeholders (REPLACE_WITH_...).
 #   3. The required pre-requisite checkbox is checked ([x]).
+#   4. Files must be in an allowed API version folder
+#      (api/yyyy-mm-02-preview or api/yyyy-mm-01).
 # =============================================================================
 set -euo pipefail
 
@@ -66,8 +68,20 @@ for file in "$@"; do
     fi
 
     # Check 3: Pre-requisite checkbox must be checked.
-    if ! grep -q '\[x\] This API is a preview API, OR it is a GA API' "$file"; then
-        errors="${errors}\n  ERROR: Pre-requisite checkbox is not checked. Expected '[x] This API is a preview API, OR it is a GA API'."
+    # Extract everything between "## Required Pre-Requisites" and the next "##" heading,
+    # then verify there is at least one checked checkbox ([x]) in that section.
+    prereq_section=$(sed -n '/^## Required Pre-Requisites/,/^## /p' "$file" | head -n -1)
+    if [[ -z "$prereq_section" ]]; then
+        errors="${errors}\n  ERROR: Missing '## Required Pre-Requisites' section."
+    elif ! echo "$prereq_section" | grep -q '\[x\]'; then
+        errors="${errors}\n  ERROR: Pre-requisite checkbox under '## Required Pre-Requisites' is not checked. Mark the checkbox with [x]."
+    fi
+
+    # Check 4: Files must be in an allowed API version folder.
+    # Allowed patterns: api/yyyy-mm-02-preview (preview) or api/yyyy-mm-01 (GA).
+    parent_dir=$(basename "$normalized_dir")
+    if ! [[ "$parent_dir" =~ ^[0-9]{4}-(0[1-9]|1[0-2])-02-preview$ || "$parent_dir" =~ ^[0-9]{4}-(0[1-9]|1[0-2])-01$ ]]; then
+        errors="${errors}\n  ERROR: File is not in an allowed API version folder. Expected folder matching 'yyyy-mm-02-preview' or 'yyyy-mm-01', got '${parent_dir}'."
     fi
 
     # Report results for this file.

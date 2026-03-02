@@ -5,7 +5,8 @@
 2. For major features such as entirely new service, or major new AddOn, make sure the name of the product is approved via 
    PMM review before proposing to use it in AKS API.
 3. Create an API review doc from [the template](0000-api-template.md). Use the provided copilot prompts.
-4. Place the document under the appropriate directory (see [directory structure](#directory-structure)).
+4. Place the document under the appropriate directory (see [directory structure](#directory-structure)). 
+   If there is not a directory for the version you're targeting, please create one in your PR.
 5. Post a link to your new document in the [AKS API Channel](https://teams.microsoft.com/l/channel/19%3a106ed06b2a3745b1a7ee5c573ab098c6%40thread.skype/AKS%2520API%2520channel?groupId=e121dbfd-0ec1-40ea-8af5-26075f6a731b&tenantId=72f988bf-86f1-41af-91ab-2d7cd011db47). 
    API review board members will take a look at it asynchronously. They may ask for a meeting if the change needs more detailed discussion.
    Please ping on this request if you haven't seen some responses within 24-48 hours.

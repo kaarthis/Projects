@@ -99,6 +99,9 @@ Verify compliance with:
 ### Properties and Fields
 
 - ✅ DO mark computed/server-owned (read-only) properties with `@visibility(Lifecycle.Read)` (e.g., `provisioningState`)
+- ✅ DO annotate new fields and models with `@added(Versions.YOUR_VERSION_HERE)` to indicate when they were added. Example: `@added(Versions.v2025_10_02_preview)`.
+  Note that due to how TypeSpec works, fields that exist only in preview APIs (not yet GA) should always specify they were added in the latest preview version, 
+  even if they were actually added in an older preview version.
 - ✅ DO mark properties that are optional with `?` in TypeSpec.
 - ⛔ DO NOT mark properties as required (no `?`) if the property is a member of ManagedCluster or AgentPool. These types have "PUTCH" handling where properties are never truly required on PUT.
 - ✅ DO add validation decorators where applicable: `@minLength`, `@maxLength`, `@minValue`, `@maxValue`, `@pattern`
@@ -152,7 +155,6 @@ model CredentialProviderProperties {
 
 ### Structure
 
-- ✅ DO ensure TypeSpec compiles without errors (`npx tsp compile .`)
 - ✅ DO use operation templates rather than defining operations from scratch
 
 ---
@@ -173,6 +175,7 @@ Ensure the proposal includes:
 - ✅ Author(s) and alias
 - ✅ Link to PRD (if applicable)
 - ✅ Link to Design doc (if applicable)
+- ✅ Link to approved preview API proposal (if this is for a GA API version)
 - ✅ Clear problem statement and rationale
 - ✅ Complete TypeSpec specification
 - ✅ 1 or 2 sample JSON snippets demonstrating the API in use
