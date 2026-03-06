@@ -51,3 +51,8 @@ configuration:
       role: Read
     - team: neaggarwt
       role: Read
+    # Portal
+    - team: pcnx-pm
+      role: Read
+    - team: pcnx-devleads
+      role: Read
