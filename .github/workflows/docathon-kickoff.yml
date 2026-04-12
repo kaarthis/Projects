@@ -157,6 +157,7 @@ jobs:
       - name: Create GitHub Issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           python3 << 'PYTHON'
           import json, subprocess, os
