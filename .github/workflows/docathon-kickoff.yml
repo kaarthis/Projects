@@ -1,0 +1,240 @@
+name: "Doc-a-thon Kickoff"
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month name (e.g., April 2026)"
+        required: true
+        default: "April 2026"
+      max_articles:
+        description: "Max articles to include"
+        required: false
+        default: "30"
+      min_score:
+        description: "Minimum priority score (0-100)"
+        required: false
+        default: "40"
+      staleness_days:
+        description: "Minimum days since ms.date"
+        required: false
+        default: "365"
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  find-stale-articles:
+    name: "Scan for stale articles"
+    runs-on: ubuntu-latest
+    outputs:
+      article_count: ${{ steps.scan.outputs.article_count }}
+    steps:
+      - name: Checkout aks-handbook
+        uses: actions/checkout@v4
+
+      - name: Clone AKS docs repo
+        run: |
+          git clone --depth 1 https://github.com/MicrosoftDocs/azure-aks-docs.git /tmp/azure-aks-docs
+
+      - name: Scan articles for staleness
+        id: scan
+        run: |
+          echo "Scanning articles under /tmp/azure-aks-docs/articles/aks/"
+          echo "Staleness threshold: ${{ inputs.staleness_days }} days"
+          echo "Min priority score: ${{ inputs.min_score }}"
+          echo "Max articles: ${{ inputs.max_articles }}"
+
+          # Parse ms.date from YAML frontmatter and compute staleness
+          python3 << 'PYTHON'
+          import os, re, json
+          from datetime import datetime, timedelta
+
+          docs_path = "/tmp/azure-aks-docs/articles/aks"
+          today = datetime.now()
+          staleness_threshold = int("${{ inputs.staleness_days }}")
+          min_score = int("${{ inputs.min_score }}")
+          max_articles = int("${{ inputs.max_articles }}")
+          articles = []
+
+          for root, dirs, files in os.walk(docs_path):
+              for f in files:
+                  if not f.endswith(".md"):
+                      continue
+                  filepath = os.path.join(root, f)
+                  rel_path = os.path.relpath(filepath, "/tmp/azure-aks-docs")
+
+                  # Skip includes, media, toc, index
+                  if "/includes/" in rel_path or "/media/" in rel_path:
+                      continue
+                  if f in ("toc.yml", "index.yml"):
+                      continue
+
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as fh:
+                          content = fh.read(4000)  # Read frontmatter only
+                  except:
+                      continue
+
+                  # Parse ms.date
+                  ms_date_match = re.search(r"^ms\.date:\s*(\d{2}/\d{2}/\d{4})", content, re.MULTILINE)
+                  if not ms_date_match:
+                      continue
+
+                  try:
+                      ms_date = datetime.strptime(ms_date_match.group(1), "%m/%d/%Y")
+                  except:
+                      continue
+
+                  days_stale = (today - ms_date).days
+                  if days_stale < staleness_threshold:
+                      continue
+
+                  # Parse title
+                  title_match = re.search(r"^title:\s*(.+)", content, re.MULTILINE)
+                  title = title_match.group(1).strip().strip("'\"") if title_match else f
+
+                  # Compute staleness score (0-100)
+                  staleness_score = min(100, (days_stale / 730) * 100)
+
+                  # No support signal in CI — use staleness only + activity bonus of 10 (dormant)
+                  priority_score = (0.5 * staleness_score) + (0.4 * 0) + 10
+
+                  if priority_score < min_score:
+                      continue
+
+                  # Build URL
+                  slug = rel_path.replace("articles/aks/", "").replace(".md", "")
+                  url = f"https://learn.microsoft.com/en-us/azure/aks/{slug}"
+
+                  articles.append({
+                      "filePath": rel_path,
+                      "title": title,
+                      "msDate": ms_date_match.group(1),
+                      "daysSinceMsDate": days_stale,
+                      "stalenessScore": round(staleness_score, 1),
+                      "priorityScore": round(priority_score, 1),
+                      "url": url
+                  })
+
+          # Sort by priority score descending
+          articles.sort(key=lambda x: x["priorityScore"], reverse=True)
+          articles = articles[:max_articles]
+
+          # Write output
+          with open("/tmp/articles.json", "w") as f:
+              json.dump(articles, f, indent=2)
+
+          print(f"\nFound {len(articles)} articles with priority_score >= {min_score}")
+          print(f"Top 5:")
+          for a in articles[:5]:
+              print(f"  [{a['priorityScore']}] {a['title']} (ms.date: {a['msDate']}, {a['daysSinceMsDate']}d stale)")
+
+          # Set output
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              gh.write(f"article_count={len(articles)}\n")
+          PYTHON
+
+      - name: Upload article list
+        uses: actions/upload-artifact@v4
+        with:
+          name: stale-articles
+          path: /tmp/articles.json
+
+  create-issues:
+    name: "Create Kanban issues"
+    needs: find-stale-articles
+    if: needs.find-stale-articles.outputs.article_count > 0
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download article list
+        uses: actions/download-artifact@v4
+        with:
+          name: stale-articles
+          path: /tmp
+
+      - name: Create GitHub Issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 << 'PYTHON'
+          import json, subprocess, os
+
+          month = "${{ inputs.month }}"
+
+          with open("/tmp/articles.json") as f:
+              articles = json.load(f)
+
+          print(f"Creating {len(articles)} issues for Doc-a-thon {month}")
+
+          # Ensure labels exist
+          labels = {
+              "docathon": "0E8A16",
+              "priority-critical": "B60205",
+              "priority-high": "D93F0B",
+              "priority-medium": "FBCA04",
+              "priority-low": "0075CA"
+          }
+          for label, color in labels.items():
+              subprocess.run(
+                  ["gh", "label", "create", label, "--color", color, "--force"],
+                  capture_output=True
+              )
+
+          created = 0
+          for article in articles:
+              # Determine priority label
+              score = article["priorityScore"]
+              if score >= 70:
+                  plabel = "priority-critical"
+              elif score >= 50:
+                  plabel = "priority-high"
+              elif score >= 30:
+                  plabel = "priority-medium"
+              else:
+                  plabel = "priority-low"
+
+              title = f"[Doc-a-thon {month}] Review: {article['title']}"
+
+              body = f"""## Article Details
+          - **File:** `{article['filePath']}`
+          - **URL:** {article['url']}
+          - **ms.date:** {article['msDate']} ({article['daysSinceMsDate']} days ago)
+          - **Priority score:** {article['priorityScore']}/100
+          - **Staleness score:** {article['stalenessScore']}/100
+
+          ## Review Checklist
+          - [ ] **Doc Review** — Structure, metadata, style, links
+          - [ ] **Eng Review** — CLI commands, API versions, code samples
+          - [ ] **CSS Review** — Support gaps, troubleshooting, customer errors
+          - [ ] **PM Review** — Feature accuracy, synthesis, PR creation
+          """
+
+              result = subprocess.run(
+                  ["gh", "issue", "create",
+                   "--title", title,
+                   "--body", body,
+                   "--label", f"docathon,{plabel}"],
+                  capture_output=True, text=True
+              )
+
+              if result.returncode == 0:
+                  created += 1
+                  print(f"  ✅ Created: {title}")
+              else:
+                  print(f"  ❌ Failed: {title} — {result.stderr.strip()}")
+
+          print(f"\nDone. Created {created}/{len(articles)} issues.")
+          PYTHON
+
+      - name: Summary
+        run: |
+          echo "## Doc-a-thon ${{ inputs.month }} — Kickoff Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Created **${{ needs.find-stale-articles.outputs.article_count }}** issues from stale article scan." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. View issues on the [Issues tab](../../issues?q=label%3Adocathon)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Add issues to your GitHub Projects board" >> $GITHUB_STEP_SUMMARY
+          echo "3. Use \`/docathon-review-article\` in VS Code to run reviews" >> $GITHUB_STEP_SUMMARY
