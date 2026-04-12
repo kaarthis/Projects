@@ -1,0 +1,4 @@
+url,title,priority,notes
+https://learn.microsoft.com/en-us/azure/aks/cluster-configuration,Configure an AKS cluster,,
+https://learn.microsoft.com/en-us/azure/aks/upgrade-aks-cluster,Upgrade an AKS cluster,,
+https://learn.microsoft.com/en-us/azure/aks/private-clusters,Create a private AKS cluster,,

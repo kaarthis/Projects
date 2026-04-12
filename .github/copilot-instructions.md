@@ -65,6 +65,27 @@ This repository includes path-specific custom instructions for **GitHub Copilot 
 
 ---
 
+## 📝 Doc-a-thon Automation
+
+The `docathon/` folder contains a multi-agent automation framework for monthly documentation review events.
+
+**Prompt files** (in `.github/prompts/`):
+
+| Prompt File                        | Purpose                                                    |
+| ---------------------------------- | ---------------------------------------------------------- |
+| `docathon-kickoff.prompt.md`       | Start a new monthly doc-a-thon (full pipeline)             |
+| `docathon-find-stale.prompt.md`    | Scan for stale articles only                               |
+| `docathon-assign.prompt.md`        | Assign a pre-curated article list for review               |
+| `docathon-review-article.prompt.md`| Review a single article end-to-end                         |
+
+**Agents** (in `.github/agents/`): Finder, Dispatcher, Doc Reviewer, Eng Reviewer, CSS Reviewer, PM Reviewer
+
+**Skills** (in `.github/skills/`): stale-article-detection, ms-learn-style-guide, aks-technical-review, support-signal-analysis
+
+See [`docathon/README.md`](../docathon/README.md) for full documentation.
+
+---
+
 ## 📚 Cross-Referencing
 
 When referencing other documents:

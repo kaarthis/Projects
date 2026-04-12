@@ -1,0 +1,63 @@
+# Doc-a-thon Configuration
+# Edit this file to configure each monthly doc-a-thon run
+
+# Target documentation repository
+docs_repo: "MicrosoftDocs/azure-aks-docs"
+docs_branch: "main"
+article_path: "articles/aks/"
+
+# Kanban tracking
+kanban_repo: ""  # Leave empty to use the current repo (aks-handbook)
+kanban_labels:
+  - "docathon"
+  - "priority-critical"
+  - "priority-high"
+  - "priority-medium"
+  - "priority-low"
+  - "review-doc"
+  - "review-eng"
+  - "review-css"
+  - "review-pm"
+
+# Finder settings
+finder:
+  max_articles: 30
+  min_priority_score: 40
+  staleness_threshold_days: 365
+  exclude_patterns:
+    - "includes/**"
+    - "media/**"
+    - "zone-pivots/**"
+    - "**/toc.yml"
+    - "**/index.yml"
+
+# Priority scoring weights
+scoring:
+  staleness_weight: 0.5
+  support_weight: 0.4
+  activity_weight: 0.1
+  staleness_max_days: 730       # Days at which staleness_score = 100
+  activity_dormant_days: 180    # Days with no commits = dormant bonus
+  activity_active_days: 90      # Days with recent commits = active reward
+
+# Support signal data source (Kusto)
+kusto:
+  cluster: "https://supportrptwus3prod.westus3.kusto.windows.net"
+  database: "Product360Jit"
+  table: "AllCloudsSupportIncidentWithReferenceModelJitVNext"
+  product_id: "16450"
+  lookback_days: 90
+
+# Review agent configuration
+review:
+  parallel_reviews: true        # Run Doc/Eng/CSS reviewers in parallel
+  auto_create_pr: true          # PM Reviewer auto-creates PR
+  pr_target_repo: "MicrosoftDocs/azure-aks-docs"
+  pr_branch_prefix: "docathon"
+  update_ms_date: true          # Auto-update ms.date on reviewed articles
+
+# Squad integration (optional)
+squad:
+  enabled: false                # Set to true when Squad CLI is installed
+  watch_interval_minutes: 10
+  state_backend: "git-notes"
