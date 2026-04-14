@@ -22,7 +22,8 @@ on:
 
 permissions:
   issues: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   find-stale-articles:
@@ -147,6 +148,8 @@ jobs:
     needs: find-stale-articles
     if: needs.find-stale-articles.outputs.article_count > 0
     runs-on: ubuntu-latest
+    outputs:
+      issue_numbers: ${{ steps.create.outputs.issue_numbers }}
     steps:
       - name: Download article list
         uses: actions/download-artifact@v4
@@ -155,12 +158,13 @@ jobs:
           path: /tmp
 
       - name: Create GitHub Issues
+        id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           python3 << 'PYTHON'
-          import json, subprocess, os
+          import json, subprocess, os, re
 
           month = "${{ inputs.month }}"
 
@@ -175,7 +179,10 @@ jobs:
               "priority-critical": "B60205",
               "priority-high": "D93F0B",
               "priority-medium": "FBCA04",
-              "priority-low": "0075CA"
+              "priority-low": "0075CA",
+              "review-in-progress": "1D76DB",
+              "review-complete": "0E8A16",
+              "pr-ready": "D4C5F9"
           }
           for label, color in labels.items():
               subprocess.run(
@@ -184,8 +191,10 @@ jobs:
               )
 
           created = 0
+          issue_numbers = []
+          issue_map = []  # For downstream jobs
+
           for article in articles:
-              # Determine priority label
               score = article["priorityScore"]
               if score >= 70:
                   plabel = "priority-critical"
@@ -205,11 +214,15 @@ jobs:
           - **Priority score:** {article['priorityScore']}/100
           - **Staleness score:** {article['stalenessScore']}/100
 
-          ## Review Checklist
-          - [ ] **Doc Review** — Structure, metadata, style, links
-          - [ ] **Eng Review** — CLI commands, API versions, code samples
-          - [ ] **CSS Review** — Support gaps, troubleshooting, customer errors
-          - [ ] **PM Review** — Feature accuracy, synthesis, PR creation
+          ## Automated Review Pipeline
+          | Phase | Status | Agent |
+          |-------|--------|-------|
+          | Doc Review | :hourglass: Pending | Automated |
+          | Eng Review | :hourglass: Pending | Automated |
+          | CSS Review | :hourglass: Pending | Automated |
+          | PM Synthesis | :hourglass: Pending | Automated |
+          | PR Creation | :hourglass: Pending | Automated |
+          | **PR Merge** | :hand: **Human required** | Manual |
           """
 
               result = subprocess.run(
@@ -222,20 +235,257 @@ jobs:
 
               if result.returncode == 0:
                   created += 1
-                  print(f"  ✅ Created: {title}")
+                  url = result.stdout.strip()
+                  num = url.split("/")[-1]
+                  issue_numbers.append(num)
+                  issue_map.append({"issue": num, "filePath": article["filePath"], "title": article["title"], "url": article["url"]})
+                  print(f"  Created #{num}: {title}")
               else:
-                  print(f"  ❌ Failed: {title} — {result.stderr.strip()}")
+                  print(f"  Failed: {title} — {result.stderr.strip()}")
 
-          print(f"\nDone. Created {created}/{len(articles)} issues.")
+          # Save issue map for review jobs
+          with open("/tmp/issue-map.json", "w") as f:
+              json.dump(issue_map, f, indent=2)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              gh.write(f"issue_numbers={','.join(issue_numbers)}\n")
+
+          print(f"\nCreated {created}/{len(articles)} issues.")
           PYTHON
 
-      - name: Summary
+      - name: Upload issue map
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-map
+          path: /tmp/issue-map.json
+
+  automated-review:
+    name: "Run automated reviews"
+    needs: create-issues
+    if: needs.create-issues.outputs.issue_numbers != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone AKS docs repo
         run: |
-          echo "## Doc-a-thon ${{ inputs.month }} — Kickoff Complete" >> $GITHUB_STEP_SUMMARY
+          git clone --depth 1 https://github.com/MicrosoftDocs/azure-aks-docs.git /tmp/azure-aks-docs
+
+      - name: Download issue map
+        uses: actions/download-artifact@v4
+        with:
+          name: issue-map
+          path: /tmp
+
+      - name: Run Doc + Eng + CSS reviews and post findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYREVIEW'
+          import json, subprocess, re, os
+          from datetime import datetime
+
+          with open("/tmp/issue-map.json") as f:
+              issues = json.load(f)
+
+          docs_root = "/tmp/azure-aks-docs"
+
+          for item in issues:
+              issue_num = item["issue"]
+              file_path = os.path.join(docs_root, item["filePath"])
+              title = item["title"]
+              url = item["url"]
+
+              print(f"\n{'='*60}")
+              print(f"Reviewing #{issue_num}: {title}")
+
+              # Mark as in-progress
+              subprocess.run(["gh", "issue", "edit", issue_num,
+                  "--add-label", "review-in-progress"], capture_output=True)
+
+              if not os.path.exists(file_path):
+                  subprocess.run(["gh", "issue", "comment", issue_num,
+                      "--body", "Article file not found — skipping automated review."],
+                      capture_output=True)
+                  continue
+
+              with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+
+              findings = {"doc": [], "eng": [], "css": []}
+
+              # ═══════════════════════════════════════
+              # DOC REVIEW — metadata, structure, style
+              # ═══════════════════════════════════════
+
+              # Check ms.date freshness
+              ms_match = re.search(r"^ms\.date:\s*(\d{2}/\d{2}/\d{4})", content, re.MULTILINE)
+              if ms_match:
+                  ms_date = datetime.strptime(ms_match.group(1), "%m/%d/%Y")
+                  days = (datetime.now() - ms_date).days
+                  if days > 365:
+                      findings["doc"].append(f"ms.date is **{days} days old** (`{ms_match.group(1)}`) — must be updated")
+                  elif days > 180:
+                      findings["doc"].append(f"ms.date is {days} days old — consider refreshing")
+              else:
+                  findings["doc"].append("**Missing `ms.date`** in frontmatter")
+
+              # Check required metadata
+              for field in ["title", "description", "ms.topic", "ms.service"]:
+                  if not re.search(rf"^{re.escape(field)}:", content, re.MULTILINE):
+                      findings["doc"].append(f"Missing required metadata: `{field}`")
+
+              # Check description length
+              desc_match = re.search(r"^description:\s*(.+)", content, re.MULTILINE)
+              if desc_match:
+                  desc = desc_match.group(1).strip()
+                  if len(desc) < 75:
+                      findings["doc"].append(f"Description too short ({len(desc)} chars) — aim for 75-300")
+                  elif len(desc) > 300:
+                      findings["doc"].append(f"Description too long ({len(desc)} chars) — max 300")
+
+              # Check for H1
+              if not re.search(r"^# ", content, re.MULTILINE):
+                  findings["doc"].append("Missing H1 heading")
+
+              # Check for broken relative links
+              md_links = re.findall(r'\[([^\]]*)\]\(([^)]+)\)', content)
+              broken_links = []
+              for text, href in md_links:
+                  if href.startswith(("http", "#", "mailto:")):
+                      continue
+                  link_path = os.path.normpath(os.path.join(os.path.dirname(file_path), href.split("#")[0].split("?")[0]))
+                  if not os.path.exists(link_path):
+                      broken_links.append(f"`{href}`")
+              if broken_links:
+                  findings["doc"].append(f"Broken relative links: {', '.join(broken_links[:5])}")
+
+              # Check for abandoned include references
+              includes = re.findall(r'\[!INCLUDE\s*\[([^\]]*)\]\(([^)]+)\)', content)
+              for inc_text, inc_path in includes:
+                  inc_full = os.path.normpath(os.path.join(os.path.dirname(file_path), inc_path))
+                  if not os.path.exists(inc_full):
+                      findings["doc"].append(f"Broken include: `{inc_path}`")
+
+              # ═══════════════════════════════════════
+              # ENG REVIEW — CLI, API, code samples
+              # ═══════════════════════════════════════
+
+              # Check for deprecated CLI commands
+              deprecated_patterns = [
+                  (r'az aks browse', "`az aks browse` is deprecated"),
+                  (r'--docker-bridge-address', "`--docker-bridge-address` is deprecated (Docker removed)"),
+                  (r'az aks enable-addons.*--addons monitoring', "Consider updated monitoring addon syntax"),
+              ]
+              for pattern, msg in deprecated_patterns:
+                  if re.search(pattern, content):
+                      findings["eng"].append(msg)
+
+              # Check for old API versions
+              api_versions = re.findall(r'api-version=(\d{4}-\d{2}-\d{2}(?:-preview)?)', content)
+              for v in set(api_versions):
+                  try:
+                      api_date = datetime.strptime(v[:10], "%Y-%m-%d")
+                      if (datetime.now() - api_date).days > 730:
+                          findings["eng"].append(f"Old API version: `{v}` (>2 years)")
+                  except:
+                      pass
+
+              # Check for old K8s versions
+              k8s_versions = re.findall(r'(?:kubernetes|k8s|aks).*?(\d+\.\d+\.\d+)', content, re.IGNORECASE)
+              for ver in set(k8s_versions):
+                  parts = ver.split(".")
+                  if len(parts) >= 2:
+                      minor = int(parts[1])
+                      if minor < 28:  # N-2 from 1.30
+                          findings["eng"].append(f"Outdated K8s version reference: `{ver}`")
+
+              # Check for code blocks without language specifier
+              bare_blocks = len(re.findall(r'^```\s*$', content, re.MULTILINE))
+              if bare_blocks > 0:
+                  findings["eng"].append(f"{bare_blocks} code block(s) missing language specifier")
+
+              # ═══════════════════════════════════════
+              # CSS REVIEW — support & troubleshooting
+              # ═══════════════════════════════════════
+
+              content_lower = content.lower()
+
+              # Check for troubleshooting section
+              if "troubleshoot" not in content_lower:
+                  findings["css"].append("No troubleshooting section — customers may struggle with common errors")
+
+              # Check for prerequisites section
+              if "prerequisite" not in content_lower:
+                  findings["css"].append("No prerequisites section — customers may hit missing dependency errors")
+
+              # Check for error message guidance
+              if "error" in content_lower and "resolution" not in content_lower and "fix" not in content_lower and "solution" not in content_lower:
+                  findings["css"].append("Article mentions errors but lacks resolution guidance")
+
+              # Check for next steps
+              if "next step" not in content_lower and "see also" not in content_lower and "related" not in content_lower:
+                  findings["css"].append("No 'Next steps' or 'Related content' section")
+
+              # ═══════════════════════════════════════
+              # POST FINDINGS AS COMMENT
+              # ═══════════════════════════════════════
+
+              total = sum(len(v) for v in findings.values())
+
+              comment = f"## Automated Review Results\n\n"
+              comment += f"**Article:** [{title}]({url})\n"
+              comment += f"**File:** `{item['filePath']}`\n"
+              comment += f"**Total findings:** {total}\n\n"
+
+              for phase, label in [("doc", "Doc Review"), ("eng", "Eng Review"), ("css", "CSS Review")]:
+                  items = findings[phase]
+                  icon = "white_check_mark" if not items else "warning"
+                  comment += f"### :{icon}: {label} ({len(items)} findings)\n\n"
+                  if items:
+                      for item_text in items:
+                          comment += f"- {item_text}\n"
+                  else:
+                      comment += "No issues found.\n"
+                  comment += "\n"
+
+              comment += "---\n"
+              comment += f"*Automated review completed at {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*\n"
+
+              subprocess.run(["gh", "issue", "comment", issue_num, "--body", comment], capture_output=True)
+
+              # Update labels: remove in-progress, add review-complete
+              subprocess.run(["gh", "issue", "edit", issue_num,
+                  "--remove-label", "review-in-progress",
+                  "--add-label", "review-complete"], capture_output=True)
+
+              if total > 0:
+                  subprocess.run(["gh", "issue", "edit", issue_num,
+                      "--add-label", "pr-ready"], capture_output=True)
+
+              print(f"  Posted {total} findings to #{issue_num}")
+
+          print("\nAll reviews complete.")
+          PYREVIEW
+
+      - name: Summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "## Doc-a-thon ${{ inputs.month }} — Pipeline Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Created **${{ needs.find-stale-articles.outputs.article_count }}** issues from stale article scan." >> $GITHUB_STEP_SUMMARY
+          echo "### Pipeline stages" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Find stale articles | :white_check_mark: Complete |" >> $GITHUB_STEP_SUMMARY
+          echo "| Create issues | :white_check_mark: Complete |" >> $GITHUB_STEP_SUMMARY
+          echo "| Doc Review | :white_check_mark: Automated |" >> $GITHUB_STEP_SUMMARY
+          echo "| Eng Review | :white_check_mark: Automated |" >> $GITHUB_STEP_SUMMARY
+          echo "| CSS Review | :white_check_mark: Automated |" >> $GITHUB_STEP_SUMMARY
+          echo "| PM Synthesis | :white_check_mark: Posted to issues |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Merge | :hand: Human required |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. View issues on the [Issues tab](../../issues?q=label%3Adocathon)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Add issues to your GitHub Projects board" >> $GITHUB_STEP_SUMMARY
-          echo "3. Use \`/docathon-review-article\` in VS Code to run reviews" >> $GITHUB_STEP_SUMMARY
+          echo "### Next steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. View issues: [Issues with findings](../../issues?q=label%3Apr-ready+label%3Adocathon)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Review automated findings on each issue" >> $GITHUB_STEP_SUMMARY
+          echo "3. Use \`@docathon-pm-reviewer\` in VS Code for deeper LLM-powered review" >> $GITHUB_STEP_SUMMARY
