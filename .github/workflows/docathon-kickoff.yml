@@ -24,6 +24,7 @@ permissions:
   issues: write
   contents: write
   pull-requests: write
+  repository-projects: write
 
 jobs:
   find-stale-articles:
@@ -489,3 +490,109 @@ jobs:
           echo "1. View issues: [Issues with findings](../../issues?q=label%3Apr-ready+label%3Adocathon)" >> $GITHUB_STEP_SUMMARY
           echo "2. Review automated findings on each issue" >> $GITHUB_STEP_SUMMARY
           echo "3. Use \`@docathon-pm-reviewer\` in VS Code for deeper LLM-powered review" >> $GITHUB_STEP_SUMMARY
+
+  create-kanban:
+    name: "Create Kanban board"
+    needs: [create-issues, automated-review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download issue map
+        uses: actions/download-artifact@v4
+        with:
+          name: issue-map
+          path: /tmp
+
+      - name: Create project board and add issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 << 'PYBOARD'
+          import json, subprocess, os, re
+
+          month = "${{ inputs.month }}"
+          owner = os.environ["GH_REPO"].split("/")[0]
+          repo = os.environ["GH_REPO"]
+
+          with open("/tmp/issue-map.json") as f:
+              issues = json.load(f)
+
+          if not issues:
+              print("No issues to add to board.")
+              exit(0)
+
+          # Create the project
+          print(f"Creating project: Doc-a-thon {month}")
+          result = subprocess.run(
+              ["gh", "project", "create",
+               "--owner", owner,
+               "--title", f"Doc-a-thon {month}",
+               "--format", "json"],
+              capture_output=True, text=True
+          )
+
+          if result.returncode != 0:
+              print(f"Failed to create project: {result.stderr}")
+              # Try to find existing project
+              list_result = subprocess.run(
+                  ["gh", "project", "list",
+                   "--owner", owner,
+                   "--format", "json"],
+                  capture_output=True, text=True
+              )
+              if list_result.returncode == 0:
+                  projects = json.loads(list_result.stdout)
+                  proj = None
+                  for p in projects.get("projects", []):
+                      if f"Doc-a-thon {month}" in p.get("title", ""):
+                          proj = p
+                          break
+                  if proj:
+                      project_number = proj["number"]
+                      print(f"Using existing project #{project_number}")
+                  else:
+                      print("Could not create or find project. Skipping board creation.")
+                      exit(0)
+              else:
+                  print("Could not list projects. Skipping board creation.")
+                  exit(0)
+          else:
+              project_data = json.loads(result.stdout)
+              project_number = project_data["number"]
+              print(f"Created project #{project_number}")
+
+          # Add each issue to the project
+          added = 0
+          for item in issues:
+              issue_num = item["issue"]
+              issue_url = f"https://github.com/{repo}/issues/{issue_num}"
+
+              add_result = subprocess.run(
+                  ["gh", "project", "item-add", str(project_number),
+                   "--owner", owner,
+                   "--url", issue_url,
+                   "--format", "json"],
+                  capture_output=True, text=True
+              )
+
+              if add_result.returncode == 0:
+                  added += 1
+                  print(f"  Added #{issue_num} to board")
+              else:
+                  print(f"  Failed to add #{issue_num}: {add_result.stderr.strip()}")
+
+          print(f"\nAdded {added}/{len(issues)} issues to project board.")
+          print(f"View board: https://github.com/users/{owner}/projects/{project_number}")
+          PYBOARD
+
+      - name: Board summary
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          owner="${GH_REPO%%/*}"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Kanban Board" >> $GITHUB_STEP_SUMMARY
+          echo "A project board was created for this doc-a-thon." >> $GITHUB_STEP_SUMMARY
+          echo "View it at: **https://github.com/users/${owner}/projects** (look for 'Doc-a-thon ${{ inputs.month }}')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tip:** Switch to Board view and group by labels to see the Kanban pipeline." >> $GITHUB_STEP_SUMMARY
